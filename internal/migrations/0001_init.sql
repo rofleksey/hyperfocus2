@@ -1,4 +1,4 @@
--- 0001_init: initial schema for the DBD live-streamer history tracker.
+-- 0001_init: initial schema for the DBD live stream history tracker.
 
 CREATE TABLE IF NOT EXISTS schema_version (
   version    INT PRIMARY KEY,
