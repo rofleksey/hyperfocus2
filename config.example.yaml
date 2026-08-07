@@ -1,0 +1,44 @@
+# Hyperfocus configuration.
+
+service:
+  name: "hyperfocus"
+  http_addr: ":8080"
+
+db:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: ""
+  database: "hyperfocus"
+  ssl_mode: "disable"
+  max_conns: 10
+
+twitch:
+  client_id: ""        # required: your Twitch Developer Application client id
+  client_secret: ""    # required: your Twitch Developer Application client secret
+  game_id: "491487"    # Dead by Daylight
+
+poll:
+  interval: "5m"
+  page_size: 100
+  page_delay: "1s"
+  preview_width: 640
+  preview_height: 360
+  preview_workers: 16
+  preview_timeout: "10s"
+  fetch_max_attempts: 3
+  fetch_delay: "2s"
+
+vod:
+  resolve_interval: "2m"
+
+prune:
+  interval: "1h"
+  days: 3                 # data retention window
+
+storage:
+  data_dir: "./data"
+
+log:
+  level: "info"           # debug | info | warn | error
+  format: "console"       # console | json | text

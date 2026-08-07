@@ -1,0 +1,395 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from "vue";
+import DatePicker from "primevue/datepicker";
+import InputText from "primevue/inputtext";
+import Select from "primevue/select";
+import Button from "primevue/button";
+import Dialog from "primevue/dialog";
+import { RouterLink, useRoute } from "vue-router";
+import { fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type Stream } from "../api";
+
+const route = useRoute();
+const at = ref<Date | null>(route.query.at ? new Date(route.query.at as string) : new Date());
+const q = ref<string>("");
+const language = ref<string>("");
+const vod = ref<string>("all");
+const sort = ref<string>("viewers");
+const dir = ref<string>("desc");
+const filtersVisible = ref(false);
+
+const sortOptions = [
+  { label: "Viewer count", value: "viewers" },
+  { label: "Name", value: "name" },
+  { label: "Stream start", value: "started" },
+];
+const dirOptions = [
+  { label: "Descending", value: "desc" },
+  { label: "Ascending", value: "asc" },
+];
+const vodOptions = [
+  { label: "All", value: "all" },
+  { label: "Has VOD", value: "has" },
+  { label: "No VOD", value: "no" },
+];
+
+const moment = ref<MomentResponse | null>(null);
+const loading = ref(false);
+const error = ref<string>("");
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+const snapshots = ref<Snapshot[]>([]);
+
+const currentSnapshotIndex = computed(() => {
+  if (!moment.value?.snapshot) return -1;
+  return snapshots.value.findIndex(s => s.id === moment.value!.snapshot!.id);
+});
+const hasPrev = computed(() => currentSnapshotIndex.value > 0);
+const hasNext = computed(() => currentSnapshotIndex.value >= 0 && currentSnapshotIndex.value < snapshots.value.length - 1);
+
+const selectedStream = ref<Stream | null>(null);
+const detailVisible = ref(false);
+
+const streams = computed(() => moment.value?.streams ?? []);
+
+function fmt(date: string): string {
+  try {
+    return new Date(date).toLocaleString();
+  } catch {
+    return date;
+  }
+}
+
+function initials(name: string): string {
+  return (name || "?").trim().charAt(0).toUpperCase();
+}
+
+function openDetail(stream: Stream) {
+  selectedStream.value = stream;
+  detailVisible.value = true;
+}
+
+function goPrev() {
+  const idx = currentSnapshotIndex.value;
+  if (idx > 0) {
+    at.value = new Date(snapshots.value[idx - 1].taken_at);
+  }
+}
+
+function goNext() {
+  const idx = currentSnapshotIndex.value;
+  if (idx >= 0 && idx < snapshots.value.length - 1) {
+    at.value = new Date(snapshots.value[idx + 1].taken_at);
+  }
+}
+
+async function load() {
+  loading.value = true;
+  error.value = "";
+  try {
+    const atParam = at.value ? at.value.toISOString() : "";
+    moment.value = await fetchMoment(atParam, q.value.trim(), language.value, vod.value, sort.value, dir.value);
+    if (snapshots.value.length === 0) {
+      const snaps = await fetchSnapshots(1000);
+      snapshots.value = snaps.data;
+    }
+  } catch (e) {
+    error.value = (e as Error).message;
+    moment.value = null;
+  } finally {
+    loading.value = false;
+  }
+}
+
+function debounceLoad() {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(load, 300);
+}
+
+watch([q, language, vod, sort, dir], debounceLoad);
+watch(at, debounceLoad);
+
+onMounted(load);
+</script>
+
+<template>
+  <section>
+    <div class="moment-bar">
+      <span class="muted" style="font-size:0.85rem">
+        Streamers online at
+        {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
+        <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
+      </span>
+      <span style="flex:1"></span>
+      <div class="moment-nav">
+        <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
+        <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
+      </div>
+      <Button label="Filters" icon="pi pi-sliders-h" size="small" severity="secondary" @click="filtersVisible = true" />
+    </div>
+
+    <p v-if="error" class="muted">Error: {{ error }}</p>
+
+    <div v-if="streams.length" class="gallery-grid">
+      <div v-for="stream in streams" :key="stream.streamer_id" class="gallery-item">
+        <span class="gallery-name" @click="openDetail(stream)" role="button" tabindex="0">
+          {{ stream.display_name }}
+        </span>
+        <a class="gallery-thumb-link" @click.prevent="openDetail(stream)" href="#">
+          <img
+            v-if="stream.preview_url"
+            class="gallery-thumb"
+            :src="stream.preview_url"
+            :alt="stream.display_name"
+            loading="lazy"
+          />
+          <span v-else class="muted">No preview</span>
+        </a>
+      </div>
+    </div>
+    <p v-else-if="!loading" class="muted">No streams found for this moment.</p>
+
+    <Dialog v-model:visible="filtersVisible" header="Filters" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }">
+      <div class="filters-grid">
+        <div class="field">
+          <label for="at">When</label>
+          <DatePicker id="at" v-model="at" showTime hourFormat="24" :showSeconds="true" dateFormat="yy-mm-dd" size="small" style="width:100%" />
+        </div>
+        <div class="field">
+          <label for="q">Name</label>
+          <InputText id="q" v-model="q" placeholder="e.g. tru3" size="small" style="width:100%" />
+        </div>
+        <div class="field">
+          <label for="language">Language</label>
+          <InputText id="language" v-model="language" placeholder="e.g. en" size="small" style="width:100%" />
+        </div>
+        <div class="field">
+          <label for="sort">Sort by</label>
+          <Select id="sort" v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
+        </div>
+        <div class="field">
+          <label for="dir">Direction</label>
+          <Select id="dir" v-model="dir" :options="dirOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
+        </div>
+        <div class="field">
+          <label for="vod">VOD</label>
+          <Select id="vod" v-model="vod" :options="vodOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog v-model:visible="detailVisible" :modal="true" :style="{ width: '95vw' }" @hide="selectedStream = null">
+      <template #header>
+        <span v-if="selectedStream">{{ selectedStream.display_name }}</span>
+      </template>
+      <div v-if="selectedStream" class="detail-content">
+        <img
+          v-if="selectedStream.preview_url"
+          class="detail-thumb"
+          :src="selectedStream.preview_url"
+          :alt="selectedStream.display_name"
+        />
+
+        <div class="detail-info">
+          <div class="detail-header">
+            <img v-if="selectedStream.profile_image_url" class="detail-avatar" :src="selectedStream.profile_image_url" :alt="selectedStream.display_name" />
+            <span v-else class="detail-avatar avatar-fallback">{{ initials(selectedStream.display_name) }}</span>
+            <div>
+              <h2 class="detail-name">
+                <RouterLink :to="`/streamer/${selectedStream.streamer_id}`">{{ selectedStream.display_name }}</RouterLink>
+              </h2>
+              <span class="muted">@{{ selectedStream.login }}</span>
+            </div>
+          </div>
+
+          <div class="detail-meta">
+            <div class="detail-row">
+              <span class="label">Viewers</span>
+              <span>{{ selectedStream.viewer_count.toLocaleString() }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">Language</span>
+              <span>{{ selectedStream.language || '—' }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">Started</span>
+              <span>{{ fmt(selectedStream.started_at) }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">Title</span>
+              <span>{{ selectedStream.title || '—' }}</span>
+            </div>
+            <div v-if="selectedStream.tags.length" class="detail-row">
+              <span class="label">Tags</span>
+              <span>{{ selectedStream.tags.join(', ') }}</span>
+            </div>
+          </div>
+
+          <div class="detail-links">
+            <a v-if="selectedStream.twitch_url" :href="selectedStream.twitch_url" target="_blank" rel="noopener" class="link-btn">Watch on Twitch</a>
+            <a v-if="selectedStream.vod_url" :href="selectedStream.vod_url" target="_blank" rel="noopener" class="link-btn">Watch VOD</a>
+          </div>
+        </div>
+      </div>
+    </Dialog>
+  </section>
+</template>
+
+<style scoped>
+.moment-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.moment-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.filters-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.filters-grid .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.filters-grid label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--p-text-muted-color);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 640px) {
+  .gallery-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gallery-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.gallery-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.gallery-thumb-link {
+  display: block;
+}
+
+.gallery-thumb {
+  width: 100%;
+  max-width: 1280px;
+  border-radius: 4px;
+  background: #000;
+  display: block;
+  cursor: pointer;
+}
+
+.detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.detail-thumb {
+  width: 100%;
+  max-width: 1280px;
+  border-radius: 6px;
+  background: #000;
+  display: block;
+}
+
+.detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.detail-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+}
+
+.avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.detail-name {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.detail-name a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detail-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.detail-row .label {
+  color: var(--p-text-muted-color, #94a3b8);
+  min-width: 80px;
+  font-size: 0.85rem;
+}
+
+.detail-links {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.link-btn {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--p-primary-color, #6366f1);
+  border-radius: 4px;
+  color: var(--p-primary-color, #6366f1);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+</style>
