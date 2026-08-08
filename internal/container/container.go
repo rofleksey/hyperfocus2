@@ -17,6 +17,7 @@ import (
 	"hyperfocus/internal/config"
 	httpHandlers "hyperfocus/internal/handlers/http"
 	"hyperfocus/internal/migrations"
+	"hyperfocus/internal/ocr"
 	"hyperfocus/internal/pkg/clock"
 	"hyperfocus/internal/previews"
 	"hyperfocus/internal/repository/postgres"
@@ -81,8 +82,14 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		return nil, oops.Wrap(err)
 	}
 
+	ocrSvc, err := ocr.New(cfg.OCR, log)
+	if err != nil {
+		return nil, oops.Wrap(err)
+	}
+
 	pollUC := poll.New(poll.Deps{
-		Clock: clock.System(), Logger: log, Gateway: tw, Vods: tw, Repo: repo, Preview: pv, Config: cfg.Poll,
+		Clock: clock.System(), Logger: log, Gateway: tw, Vods: tw, Repo: repo,
+		Preview: pv, OCR: ocrSvc, Config: cfg.Poll, OCRConfig: cfg.OCR,
 	})
 	resolveUC := resolvevod.New(resolvevod.Deps{
 		Clock: clock.System(), Logger: log, Gateway: tw, Repo: repo, Config: cfg.Vod,

@@ -17,8 +17,11 @@ export interface Stream {
   started_at: string;
   vod_offset_seconds?: number;
   preview_url?: string;
+  thumb_url?: string;
   vod_url?: string;
   twitch_url?: string;
+  survivor_names: string[];
+  fuzzy_score?: number;
 }
 
 export interface MomentResponse {
@@ -34,10 +37,19 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function fetchMoment(at: string, q: string, language: string, vod: string, sort: string, dir: string): Promise<MomentResponse> {
+export function fetchMoment(
+  at: string,
+  q: string,
+  survivor: string,
+  language: string,
+  vod: string,
+  sort: string,
+  dir: string,
+): Promise<MomentResponse> {
   const p = new URLSearchParams();
   if (at) p.set("at", at);
   if (q) p.set("q", q);
+  if (survivor) p.set("survivor", survivor);
   if (language) p.set("language", language);
   if (vod && vod !== "all") p.set("vod", vod);
   if (sort) p.set("sort", sort);

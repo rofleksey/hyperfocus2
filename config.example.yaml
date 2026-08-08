@@ -39,6 +39,13 @@ prune:
 storage:
   data_dir: "./data"
 
+ocr:
+  enabled: true             # set false to skip survivor-name OCR entirely
+  python_bin: "python3"
+  script_dir: "./scripts/ocr"   # dir containing the vendored fastocr.py + extract.py
+  workers: 2                # python OCR worker processes per batch
+  timeout: "120s"           # whole-batch deadline; aborts OCR if exceeded
+
 log:
   level: "info"           # debug | info | warn | error
   format: "console"       # console | json | text

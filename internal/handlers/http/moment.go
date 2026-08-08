@@ -40,6 +40,7 @@ func (a *API) Moment(w http.ResponseWriter, r *http.Request) {
 	result, err := a.moments.MomentAt(r.Context(), moments.Params{
 		At:       at,
 		Query:    q.Get("q"),
+		Survivor: q.Get("survivor"),
 		Language: q.Get("language"),
 		Vod:      vod,
 		Sort:     q.Get("sort"),

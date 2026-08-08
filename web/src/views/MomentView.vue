@@ -10,12 +10,15 @@ import { fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type S
 
 const route = useRoute();
 const at = ref<Date | null>(route.query.at ? new Date(route.query.at as string) : new Date());
+const survivor = ref<string>("");
 const q = ref<string>("");
 const language = ref<string>("");
 const vod = ref<string>("all");
 const sort = ref<string>("viewers");
 const dir = ref<string>("desc");
 const filtersVisible = ref(false);
+
+const survivorSearchActive = computed(() => survivor.value.trim().length > 0);
 
 const sortOptions = [
   { label: "Viewer count", value: "viewers" },
@@ -87,7 +90,7 @@ async function load() {
   error.value = "";
   try {
     const atParam = at.value ? at.value.toISOString() : "";
-    moment.value = await fetchMoment(atParam, q.value.trim(), language.value, vod.value, sort.value, dir.value);
+    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, vod.value, sort.value, dir.value);
     if (snapshots.value.length === 0) {
       const snaps = await fetchSnapshots(1000);
       snapshots.value = snaps.data;
@@ -105,8 +108,17 @@ function debounceLoad() {
   timer = setTimeout(load, 300);
 }
 
-watch([q, language, vod, sort, dir], debounceLoad);
+watch([survivor, q, language, vod, sort, dir], debounceLoad);
 watch(at, debounceLoad);
+
+function scorePct(s: Stream): string {
+  if (s.fuzzy_score == null) return "";
+  return Math.round(s.fuzzy_score * 100) + "%";
+}
+
+function thumbSrc(s: Stream): string | undefined {
+  return s.thumb_url || s.preview_url || undefined;
+}
 
 onMounted(load);
 </script>
@@ -120,6 +132,17 @@ onMounted(load);
         <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
       </span>
       <span style="flex:1"></span>
+      <div class="survivor-search">
+        <span class="pi pi-search search-icon"></span>
+        <input
+          class="survivor-input"
+          type="text"
+          v-model="survivor"
+          placeholder="Search survivors…"
+          autocomplete="off"
+        />
+        <span v-if="survivorSearchActive" class="sort-hint">sorted by relevance</span>
+      </div>
       <div class="moment-nav">
         <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
         <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
@@ -131,14 +154,19 @@ onMounted(load);
 
     <div v-if="streams.length" class="gallery-grid">
       <div v-for="stream in streams" :key="stream.streamer_id" class="gallery-item">
-        <span class="gallery-name" @click="openDetail(stream)" role="button" tabindex="0">
-          {{ stream.display_name }}
-        </span>
+        <div class="gallery-headline">
+          <span class="gallery-name" @click="openDetail(stream)" role="button" tabindex="0">
+            {{ stream.display_name }}
+          </span>
+          <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :title="'fuzzy match: ' + scorePct(stream)">
+            {{ scorePct(stream) }}
+          </span>
+        </div>
         <a class="gallery-thumb-link" @click.prevent="openDetail(stream)" href="#">
           <img
-            v-if="stream.preview_url"
+            v-if="thumbSrc(stream)"
             class="gallery-thumb"
-            :src="stream.preview_url"
+            :src="thumbSrc(stream)"
             :alt="stream.display_name"
             loading="lazy"
           />
@@ -155,7 +183,7 @@ onMounted(load);
           <DatePicker id="at" v-model="at" showTime hourFormat="24" :showSeconds="true" dateFormat="yy-mm-dd" size="small" style="width:100%" />
         </div>
         <div class="field">
-          <label for="q">Name</label>
+          <label for="q">Streamer name</label>
           <InputText id="q" v-model="q" placeholder="e.g. tru3" size="small" style="width:100%" />
         </div>
         <div class="field">
@@ -164,16 +192,17 @@ onMounted(load);
         </div>
         <div class="field">
           <label for="sort">Sort by</label>
-          <Select id="sort" v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
+          <Select id="sort" v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" :disabled="survivorSearchActive" />
         </div>
         <div class="field">
           <label for="dir">Direction</label>
-          <Select id="dir" v-model="dir" :options="dirOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
+          <Select id="dir" v-model="dir" :options="dirOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" :disabled="survivorSearchActive" />
         </div>
         <div class="field">
           <label for="vod">VOD</label>
           <Select id="vod" v-model="vod" :options="vodOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
         </div>
+        <p v-if="survivorSearchActive" class="muted field-hint">Sort is disabled — survivor search ranks by relevance.</p>
       </div>
     </Dialog>
 
@@ -224,6 +253,12 @@ onMounted(load);
             </div>
           </div>
 
+          <div class="ocr-block">
+            <span class="ocr-label muted">Survivors (OCR · noisy)</span>
+            <pre v-if="selectedStream.survivor_names.length" class="ocr-code"><code>{{ JSON.stringify(selectedStream.survivor_names, null, 2) }}</code></pre>
+            <span v-else class="muted">—</span>
+          </div>
+
           <div class="detail-links">
             <a v-if="selectedStream.twitch_url" :href="selectedStream.twitch_url" target="_blank" rel="noopener" class="link-btn">Watch on Twitch</a>
             <a v-if="selectedStream.vod_url" :href="selectedStream.vod_url" target="_blank" rel="noopener" class="link-btn">Watch VOD</a>
@@ -245,6 +280,90 @@ onMounted(load);
 .moment-nav {
   display: flex;
   gap: 0.25rem;
+}
+
+.survivor-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 240px;
+}
+
+.survivor-input {
+  width: 100%;
+  padding: 0.35rem 0.6rem 0.35rem 1.8rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--p-inputtext-border-color, #3a3f4b);
+  border-radius: 4px;
+  background: var(--p-inputtext-background, #11151c);
+  color: var(--p-inputtext-color, inherit);
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.55rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.sort-hint {
+  position: absolute;
+  right: 0.5rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--p-primary-color, #6366f1);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gallery-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.score-badge {
+  flex: 0 0 auto;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  background: var(--p-primary-color, #6366f1);
+  color: #fff;
+}
+
+.ocr-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ocr-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ocr-code {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: #0b0e13;
+  border: 1px solid #232a36;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+}
+
+.field-hint {
+  font-size: 0.72rem;
+  margin: 0;
 }
 
 .filters-grid {

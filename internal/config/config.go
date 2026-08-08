@@ -21,6 +21,7 @@ type Config struct {
 	Vod     Vod     `yaml:"vod"`
 	Prune   Prune   `yaml:"prune"`
 	Storage Storage `yaml:"storage"`
+	OCR     OCR     `yaml:"ocr"`
 	Log     Log     `yaml:"log"`
 }
 
@@ -69,6 +70,23 @@ type Prune struct {
 type Storage struct {
 	DataDir string `yaml:"data_dir"`
 }
+
+// OCR configures the survivor-name OCR subprocess invoked once per poll cycle.
+// OCR is implemented by a vendored Python pipeline (RapidOCR / PaddleOCR-ONNX);
+// the Go side shells out to it with a batch of preview paths and parses NDJSON.
+// Enabled is a pointer so an explicit `enabled: false` in YAML is honored while
+// an omitted field still defaults to enabled.
+type OCR struct {
+	Enabled   *bool    `yaml:"enabled"`
+	PythonBin string   `yaml:"python_bin"`
+	ScriptDir string   `yaml:"script_dir"`
+	Workers   int      `yaml:"workers"`
+	Timeout   Duration `yaml:"timeout"`
+}
+
+// IsEnabled reports whether OCR is enabled, defaulting to true when the field is
+// unset.
+func (o OCR) IsEnabled() bool { return o.Enabled == nil || *o.Enabled }
 
 type Log struct {
 	Level  string `yaml:"level"`
@@ -160,6 +178,17 @@ func applyDefaults(c *Config) {
 	}
 
 	setStr(&c.Storage.DataDir, "./data")
+
+	if c.OCR.Enabled == nil {
+		t := true
+		c.OCR.Enabled = &t
+	}
+	setStr(&c.OCR.PythonBin, "python3")
+	setStr(&c.OCR.ScriptDir, "./scripts/ocr")
+	setInt(&c.OCR.Workers, 2)
+	if c.OCR.Timeout == 0 {
+		c.OCR.Timeout = Duration(120 * time.Second)
+	}
 
 	setStr(&c.Log.Level, "info")
 	setStr(&c.Log.Format, "console")

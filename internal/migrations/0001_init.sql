@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS stream_samples (
   started_at         TIMESTAMPTZ NOT NULL,
   vod_offset_seconds INT,
   preview_filename   TEXT,
+  survivor_names     TEXT[] NOT NULL DEFAULT '{}',
   PRIMARY KEY (snapshot_id, session_id)
 );
 
@@ -61,3 +62,4 @@ CREATE INDEX IF NOT EXISTS idx_sessions_streamer_st ON stream_sessions(streamer_
 CREATE INDEX IF NOT EXISTS idx_sessions_ended       ON stream_sessions(ended_at);
 CREATE INDEX IF NOT EXISTS idx_streamers_last_seen  ON streamers(last_seen);
 CREATE INDEX IF NOT EXISTS idx_vods_started         ON vods(started_at);
+CREATE INDEX IF NOT EXISTS idx_samples_survivors    ON stream_samples USING GIN (survivor_names);

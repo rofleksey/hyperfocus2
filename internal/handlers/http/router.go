@@ -13,6 +13,7 @@ func Register(mux *http.ServeMux, api *API) {
 	mux.HandleFunc("GET /api/streamers/{id}", api.Streamer)
 	mux.HandleFunc("GET /api/vods/{id}", api.Vod)
 	mux.HandleFunc("GET /previews/{filename}", api.Preview)
+	mux.HandleFunc("GET /previews/thumbs/{filename}", api.Thumb)
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})

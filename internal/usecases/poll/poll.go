@@ -41,20 +41,31 @@ type Repository interface {
 	RunInTx(ctx context.Context, f func(ctx context.Context) error) error
 }
 
-// PreviewStore captures and persists a preview image.
+// PreviewStore captures and persists a preview image and derives a fast
+// low-resolution thumbnail from it.
 type PreviewStore interface {
 	FetchAndSave(ctx context.Context, url string) (string, error)
+	Path(filename string) string
+	MakeThumbnail(srcName string) (string, error)
+}
+
+// OCRGateway extracts survivor usernames from preview images in a single batch.
+// It is invoked once per poll cycle after previews have been captured.
+type OCRGateway interface {
+	ExtractSurvivors(ctx context.Context, paths []string) (map[string][]string, error)
 }
 
 // Deps holds the collaborators for New.
 type Deps struct {
-	Clock   clock.Clock
-	Logger  *slog.Logger
-	Gateway StreamsGateway
-	Vods    VideosGateway
-	Repo    Repository
-	Preview PreviewStore
-	Config  config.Poll
+	Clock     clock.Clock
+	Logger    *slog.Logger
+	Gateway   StreamsGateway
+	Vods      VideosGateway
+	Repo      Repository
+	Preview   PreviewStore
+	OCR       OCRGateway
+	Config    config.Poll
+	OCRConfig config.OCR
 }
 
 // Poll is the polling usecase.
@@ -65,7 +76,9 @@ type Poll struct {
 	vods    VideosGateway
 	repo    Repository
 	prev    PreviewStore
+	ocr     OCRGateway
 	cfg     config.Poll
+	ocrCfg  config.OCR
 }
 
 // New builds a Poll from its dependencies.
@@ -73,7 +86,10 @@ func New(d Deps) *Poll {
 	if d.Clock == nil {
 		d.Clock = clock.System()
 	}
-	return &Poll{clock: d.Clock, log: d.Logger, gateway: d.Gateway, vods: d.Vods, repo: d.Repo, prev: d.Preview, cfg: d.Config}
+	return &Poll{
+		clock: d.Clock, log: d.Logger, gateway: d.Gateway, vods: d.Vods,
+		repo: d.Repo, prev: d.Preview, ocr: d.OCR, cfg: d.Config, ocrCfg: d.OCRConfig,
+	}
 }
 
 // Run polls forever until ctx is cancelled.
@@ -103,14 +119,16 @@ func (p *Poll) tick(ctx context.Context) {
 }
 
 type streamResult struct {
-	stream       entity.LiveStream
-	sessionID    int64
-	previewFile  string
-	vodID        string
-	vodCreated   time.Time
-	vodDuration  time.Duration
-	vodURL       string
-	skipVodFetch bool
+	stream        entity.LiveStream
+	sessionID     int64
+	previewFile   string
+	thumbFile     string
+	vodID         string
+	vodCreated    time.Time
+	vodDuration   time.Duration
+	vodURL        string
+	skipVodFetch  bool
+	survivorNames []string
 }
 
 func (p *Poll) doPoll(ctx context.Context) error {
@@ -188,6 +206,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 
 	vodResolved := 0
 	previewOk := 0
+	thumbOk := 0
 	for _, r := range results {
 		if r.vodID != "" {
 			vodResolved++
@@ -195,13 +214,57 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		if r.previewFile != "" {
 			previewOk++
 		}
+		if r.thumbFile != "" {
+			thumbOk++
+		}
 	}
 	p.log.Debug("poll: capture+vod complete",
 		slog.Int("streams", len(results)),
 		slog.Int("previews_ok", previewOk),
+		slog.Int("thumbs_ok", thumbOk),
 		slog.Int("vods_fetched_new", vodResolved),
 		slog.Int("vods_skipped", sessionsWithVod),
 		slog.Duration("duration", captureDur))
+
+	// -----------------------------------------------------------------------
+	// Phase 3.5 — OCR survivor names from captured previews (best-effort).
+	// One batched call over every preview path; failures are logged and do not
+	// abort the cycle (samples get empty survivor_names instead).
+	// -----------------------------------------------------------------------
+	ocrDur := time.Duration(0)
+	survivorsFound := 0
+	if p.ocr != nil && p.ocrCfg.IsEnabled() {
+		paths := make([]string, 0, previewOk)
+		for i := range results {
+			if results[i].previewFile != "" {
+				paths = append(paths, p.prev.Path(results[i].previewFile))
+			}
+		}
+		if len(paths) > 0 {
+			ocrStart := time.Now()
+			p.log.Info("ocr: phase start", slog.Int("images", len(paths)))
+			namesByPath, ocrErr := p.ocr.ExtractSurvivors(ctx, paths)
+			ocrDur = time.Since(ocrStart)
+			if ocrErr != nil {
+				p.log.Warn("poll: OCR phase failed; continuing with empty survivor names",
+					slog.Any("error", ocrErr), slog.Duration("duration", ocrDur))
+			}
+			for i := range results {
+				if results[i].previewFile == "" {
+					continue
+				}
+				names := namesByPath[p.prev.Path(results[i].previewFile)]
+				if len(names) > 0 {
+					results[i].survivorNames = names
+					survivorsFound++
+				}
+			}
+			p.log.Info("ocr: phase done",
+				slog.Int("images", len(paths)),
+				slog.Int("samples_with_names", survivorsFound),
+				slog.Duration("duration", ocrDur))
+		}
+	}
 
 	// -----------------------------------------------------------------------
 	// Phase 4 — second DB tx: attach new VODs + snapshot + close unseen.
@@ -281,6 +344,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 				StartedAt:        r.stream.StartedAt,
 				VodOffsetSeconds: off,
 				PreviewFilename:  fn,
+				SurvivorNames:    r.survivorNames,
 			}); err != nil {
 				return oops.Wrap(err)
 			}
@@ -290,18 +354,38 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		return err
 	}
 
+	totalDur := time.Since(started)
+	interval := p.cfg.Interval.Std()
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+
 	p.log.Info("poll cycle complete",
 		slog.Int("streams", len(streams)),
 		slog.Int64("snapshot_id", snapshotID),
 		slog.Int("previews", previewOk),
+		slog.Int("thumbs", thumbOk),
 		slog.Int("previews_failed", len(results)-previewOk),
+		slog.Int("survivors_found", survivorsFound),
 		slog.Int("vods_new", vodResolved),
 		slog.Int("vods_skipped", sessionsWithVod),
 		slog.Int("vods_missed", len(results)-sessionsWithVod-vodResolved),
 		slog.Duration("fetch_duration", fetchDur),
 		slog.Duration("capture_duration", captureDur),
-		slog.Duration("total_duration", time.Since(started)),
+		slog.Duration("ocr_duration", ocrDur),
+		slog.Duration("total_duration", totalDur),
+		slog.Duration("interval", interval),
 	)
+
+	// Surface a warning whenever the full cycle did not fit inside the poll
+	// interval — this is the direct "is OCR keeping up" signal.
+	if totalDur >= interval {
+		p.log.Warn("poll: cycle exceeded interval — OCR/capture cannot keep up",
+			slog.Duration("total_duration", totalDur),
+			slog.Duration("interval", interval),
+			slog.Duration("ocr_duration", ocrDur),
+			slog.Duration("capture_duration", captureDur))
+	}
 	return nil
 }
 
@@ -367,6 +451,21 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult) {
 						slog.Any("error", err))
 				} else {
 					r.previewFile = fn
+					// Derive a fast low-resolution thumbnail for the gallery grid.
+					// Best-effort: a missing thumb just makes the frontend fall
+					// back to the full preview.
+					thumbStart := time.Now()
+					if _, tErr := p.prev.MakeThumbnail(fn); tErr != nil {
+						p.log.Debug("poll: thumbnail failed",
+							slog.String("login", r.stream.Login),
+							slog.String("file", fn),
+							slog.Any("error", tErr))
+					} else {
+						r.thumbFile = fn
+						p.log.Debug("poll: thumbnail generated",
+							slog.String("file", fn),
+							slog.Duration("duration", time.Since(thumbStart)))
+					}
 				}
 			}
 
@@ -391,19 +490,19 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult) {
 					r.vodCreated = v.CreatedAt
 					r.vodDuration = v.Duration
 					r.vodURL = v.URL
-				p.log.Debug("poll: vod matched",
-					slog.String("login", r.stream.Login),
-					slog.String("vod_id", v.VodID),
-					slog.String("vod_stream_id", strPtr(v.StreamID)))
-			} else {
-				p.log.Debug("poll: vod no-match",
-					slog.String("login", r.stream.Login),
-					slog.String("stream_id", r.stream.TwitchStreamID),
-					slog.Time("stream_started", r.stream.StartedAt),
-					slog.Int("videos_checked", len(videos)))
+					p.log.Debug("poll: vod matched",
+						slog.String("login", r.stream.Login),
+						slog.String("vod_id", v.VodID),
+						slog.String("vod_stream_id", strPtr(v.StreamID)))
+				} else {
+					p.log.Debug("poll: vod no-match",
+						slog.String("login", r.stream.Login),
+						slog.String("stream_id", r.stream.TwitchStreamID),
+						slog.Time("stream_started", r.stream.StartedAt),
+						slog.Int("videos_checked", len(videos)))
+				}
 			}
-		}
-	}(i)
+		}(i)
 	}
 	wg.Wait()
 }
@@ -486,16 +585,6 @@ func itoa(n int) string {
 		b[pos] = '-'
 	}
 	return string(b[pos:])
-}
-
-func countNonEmpty(ss []string) int {
-	n := 0
-	for _, s := range ss {
-		if s != "" {
-			n++
-		}
-	}
-	return n
 }
 
 func maxAttempts(n int) int {

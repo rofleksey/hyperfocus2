@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/samber/oops"
 
 	"hyperfocus/internal/entity"
+	"hyperfocus/internal/pkg/fuzzy"
 )
 
 // Repository is the read port needed by the moments usecase.
@@ -25,7 +27,8 @@ type Repository interface {
 // Params describes a "who was online" query.
 type Params struct {
 	At       time.Time
-	Query    string
+	Query    string // streamer name (login/display_name) ILIKE filter
+	Survivor string // survivor-name fuzzy search; when set, overrides Sort/Dir
 	Language string
 	HasVod   bool
 	Vod      string // "all", "has", "no" — replaces HasVod
@@ -69,6 +72,7 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 	s.log.Debug("moment: query",
 		slog.Time("at", p.At),
 		slog.String("q", p.Query),
+		slog.String("survivor", p.Survivor),
 		slog.String("lang", p.Language),
 		slog.Bool("has_vod", p.HasVod),
 		slog.String("sort", p.Sort),
@@ -111,6 +115,12 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 	if err != nil {
 		return res, oops.Wrap(err)
 	}
+	// When a survivor-name search is active it becomes the primary ranking: the
+	// user-selected Sort/Dir is ignored and results are ordered by fuzzy score
+	// (descending). The matcher is intentionally loose so many results surface.
+	if p.Survivor != "" {
+		samples = rankBySurvivor(p.Survivor, samples)
+	}
 	res.Streams = samples
 	s.log.Debug("moment: result", slog.Int("samples", len(samples)))
 	return res, nil
@@ -119,4 +129,44 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 // Snapshots lists available moments within [from, to].
 func (s *Service) Snapshots(ctx context.Context, from, to *time.Time, limit int) ([]entity.Snapshot, error) {
 	return s.repo.ListSnapshots(ctx, from, to, limit)
+}
+
+// rankBySurvivor scores each sample against the survivor query (best fuzzy
+// match across its OCR'd survivor names, with a small streamer login/display
+// tiebreak so the result still feels right), drops anything below the loose
+// threshold, and sorts the rest by score descending. The matched score is
+// attached to each returned SampleDetail so the handler can surface it.
+func rankBySurvivor(query string, samples []entity.SampleDetail) []entity.SampleDetail {
+	type scored struct {
+		s    entity.SampleDetail
+		best float64
+	}
+	out := make([]scored, 0, len(samples))
+	for _, s := range samples {
+		best := fuzzy.BestScore(query, s.SurvivorNames)
+		// Small tiebreak: the streamer's own login/display name, so a query that
+		// happens to match the broadcaster still ranks well even with no OCR
+		// names. Capped below the real survivor-name signal.
+		if lb := 0.7 * fuzzy.Score(query, s.Login+" "+s.DisplayName); lb > best {
+			best = lb
+		}
+		if best < fuzzy.Threshold {
+			continue
+		}
+		out = append(out, scored{s: s, best: best})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].best != out[j].best {
+			return out[i].best > out[j].best
+		}
+		// Stable secondary ordering by viewer count for consistent display.
+		return out[i].s.ViewerCount > out[j].s.ViewerCount
+	})
+	res := make([]entity.SampleDetail, len(out))
+	for i, o := range out {
+		score := o.best
+		o.s.FuzzyScore = &score
+		res[i] = o.s
+	}
+	return res
 }
