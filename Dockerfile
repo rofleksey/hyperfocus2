@@ -38,7 +38,6 @@ RUN apt-get update && \
         numpy==2.5.1
 
 COPY --from=build /out/hyperfocus /opt/hyperfocus
-COPY scripts/ocr/ /opt/ocr/
 RUN chown -R hyperfocus:hyperfocus /opt
 USER hyperfocus:hyperfocus
 EXPOSE 8080

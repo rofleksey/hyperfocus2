@@ -41,8 +41,7 @@ storage:
 
 ocr:
   enabled: true             # set false to skip survivor-name OCR entirely
-  python_bin: "python3"
-  script_dir: "./scripts/ocr"   # dir containing the vendored fastocr.py + extract.py
+  python_bin: "python3"     # only change if your python3 lacks the deps (point at a venv)
   workers: 2                # python OCR worker processes per batch
   timeout: "120s"           # whole-batch deadline; aborts OCR if exceeded
 

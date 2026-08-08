@@ -1,23 +1,23 @@
 // Package ocr is the adapter that extracts DbD survivor usernames from captured
 // preview images. The actual image processing runs in a vendored Python pipeline
-// (scripts/ocr/fastocr.py — RapidOCR / PaddleOCR-ONNX, tuned for the 1280x720
-// preview resolution). This package shells out to it once per poll cycle with a
-// batch of preview paths and parses the NDJSON results.
+// (RapidOCR / PaddleOCR-ONNX) that is embedded into the Go binary and extracted
+// to a temporary directory at startup — no external script path or Python
+// interpreter configuration is needed beyond ensuring `python3` is on PATH.
 //
-// The Python invocation is a single batched call so the ~0.2s ONNX model load
-// is amortized across every image of the cycle. Failures are non-fatal: the
-// poll continues with empty survivor names and logs the error.
+// Extraction is single-batch per poll cycle so the model load (~0.2 s) is
+// amortized; failures are non-fatal and the poll continues with empty survivor
+// names.
 //
-// Timing is logged extensively: batch start/done with image counts, workers,
-// total duration and per-image average, plus a per-image debug line. This lets
-// an operator answer "how long does OCR take per image" and "does the batch fit
-// inside the poll interval" directly from the logs.
+// Extensive timing logs (batch start/done with image counts, per-image average,
+// per-image debug) are written so operators can measure whether OCR fits inside
+// the poll interval.
 package ocr
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
+	_ "embed"
 	"fmt"
 	"io"
 	"log/slog"
@@ -31,62 +31,64 @@ import (
 	"hyperfocus/internal/config"
 )
 
-// ocrRecord is one NDJSON line emitted by `fastocr.py --json`.
+//go:embed fastocr.py
+var fastocrScript string
+
+//go:embed extract.py
+var extractScript string
+
+// ocrRecord is one NDJSON line emitted by the pipeline.
 type ocrRecord struct {
 	Image string   `json:"image"`
 	Names []string `json:"names"`
 }
 
-// Service runs the OCR subprocess. It is safe for concurrent use only if the
-// caller serializes ExtractSurvivors calls (the poll usecase does).
+// Service shells out to the embedded Python OCR pipeline. Concurrent use must
+// be serialized by the caller (the poll usecase does this naturally).
 type Service struct {
-	log    *slog.Logger
-	cfg    config.OCR
-	script string // absolute path to fastocr.py
+	log  *slog.Logger
+	cfg  config.OCR
+	path string // temp directory holding the extracted scripts
 }
 
-// New builds a Service. It resolves the fastocr.py path and, when OCR is
-// enabled, warns (without failing) if the interpreter or script are missing so
-// the application still starts and the poll loop can degrade gracefully.
+// New builds a Service. It extracts the embedded Python scripts to a temporary
+// directory and warns (without failing) when python3 is missing so the
+// application starts cleanly and the poll loop can degrade.
 func New(cfg config.OCR, log *slog.Logger) (*Service, error) {
-	script := filepath.Join(cfg.ScriptDir, "fastocr.py")
-	s := &Service{log: log, cfg: cfg, script: script}
+	s := &Service{log: log, cfg: cfg}
 	if !cfg.IsEnabled() {
 		log.Info("ocr: disabled by configuration")
 		return s, nil
 	}
-	// If the configured script is absent, try the bundled container path
-	// (/opt/ocr) so the Docker image works without extra config. Falls through
-	// to the original warning if neither exists.
-	if _, err := os.Stat(script); err != nil {
-		bundled := "/opt/ocr/fastocr.py"
-		if _, err2 := os.Stat(bundled); err2 == nil {
-			script = bundled
-			s.script = bundled
-			log.Info("ocr: using bundled script location", slog.String("path", bundled))
-		}
+
+	tmp, err := os.MkdirTemp("", "hf-ocr")
+	if err != nil {
+		return nil, oops.Wrap(err)
 	}
-	if _, err := os.Stat(s.script); err != nil {
-		log.Warn("ocr: fastocr.py not found at configured path; OCR will fail each cycle",
-			slog.String("path", s.script),
-			slog.String("script_dir", cfg.ScriptDir))
+	if err := os.WriteFile(filepath.Join(tmp, "fastocr.py"), []byte(fastocrScript), 0o500); err != nil {
+		return nil, oops.Wrap(err)
 	}
-	if _, err := exec.LookPath(cfg.PythonBin); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, "extract.py"), []byte(extractScript), 0o400); err != nil {
+		return nil, oops.Wrap(err)
+	}
+	s.path = tmp
+
+	if _, err := exec.LookPath(s.cfg.PythonBin); err != nil {
 		log.Warn("ocr: python interpreter not found on PATH; OCR will fail each cycle",
-			slog.String("python_bin", cfg.PythonBin))
+			slog.String("python_bin", s.cfg.PythonBin))
 	}
 	log.Info("ocr: configured",
-		slog.String("python", cfg.PythonBin),
-		slog.String("script", s.script),
+		slog.String("python", s.cfg.PythonBin),
+		slog.String("script_dir", tmp),
 		slog.Int("workers", cfg.Workers),
 		slog.Duration("timeout", cfg.Timeout.Std()))
 	return s, nil
 }
 
-// ExtractSurvivors runs the OCR pipeline over the given preview file paths and
-// returns a map of path -> survivor names. Paths with no detections are omitted
-// from the map. A non-nil error means the batch could not complete; partial
-// results are still returned when available.
+// ExtractSurvivors runs the embedded OCR pipeline over the given preview file
+// paths. It returns a map of path → survivor names. Paths with no detections
+// are omitted. A non-nil error means the batch did not complete; partial results
+// are still returned when available.
 func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[string][]string, error) {
 	out := make(map[string][]string, len(paths))
 	if !s.cfg.IsEnabled() || len(paths) == 0 {
@@ -105,12 +107,13 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 		workers = 1
 	}
 
+	script := filepath.Join(s.path, "fastocr.py")
 	args := make([]string, 0, len(paths)+4)
-	args = append(args, s.script, "--json", "--workers", fmt.Sprintf("%d", workers))
+	args = append(args, script, "--json", "--workers", fmt.Sprintf("%d", workers))
 	args = append(args, paths...)
 
 	cmd := exec.CommandContext(cctx, s.cfg.PythonBin, args...)
-	cmd.Stderr = os.Stderr // surface Python tracebacks / ONNX warnings in the app log
+	cmd.Stderr = os.Stderr
 
 	pr, err := cmd.StdoutPipe()
 	if err != nil {
@@ -121,8 +124,6 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	s.log.Info("ocr: batch start",
 		slog.Int("images", len(paths)),
 		slog.Int("workers", workers),
-		slog.String("python", s.cfg.PythonBin),
-		slog.String("script", s.script),
 		slog.Duration("timeout", timeout))
 
 	if err := cmd.Start(); err != nil {
@@ -130,7 +131,6 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 		return out, oops.Wrap(err)
 	}
 
-	// Parse stdout as it streams so memory stays flat regardless of batch size.
 	r := bufio.NewReaderSize(pr, 64*1024)
 	for {
 		line, readErr := r.ReadBytes('\n')
@@ -171,9 +171,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	return out, nil
 }
 
-// handleLine parses one NDJSON record and records any non-empty names. Malformed
-// lines are logged at debug and skipped so a single bad record can't abort the
-// whole batch.
+// handleLine parses one NDJSON record and records any non-empty names.
 func (s *Service) handleLine(line []byte, out map[string][]string) {
 	var rec ocrRecord
 	if err := json.Unmarshal(line, &rec); err != nil {
