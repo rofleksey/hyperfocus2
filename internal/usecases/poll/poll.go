@@ -90,23 +90,17 @@ func New(d Deps) *Poll {
 	}
 }
 
-// Run polls forever until ctx is cancelled.
+// Run polls forever until ctx is cancelled, running cycles back-to-back with
+// no delay between them.
 func (p *Poll) Run(ctx context.Context) {
-	interval := p.cfg.Interval.Std()
-	if interval <= 0 {
-		interval = 5 * time.Minute
-	}
-	p.log.Info("poll loop starting", slog.Duration("interval", interval))
-	p.tick(ctx)
-	t := time.NewTicker(interval)
-	defer t.Stop()
+	p.log.Info("poll loop starting")
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
-			p.tick(ctx)
+		default:
 		}
+		p.tick(ctx)
 	}
 }
 
@@ -320,10 +314,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 	}
 
 	totalDur := time.Since(started)
-	interval := p.cfg.Interval.Std()
-	if interval <= 0 {
-		interval = 5 * time.Minute
-	}
 
 	p.log.Info("poll cycle complete",
 		slog.Int("streams", len(streams)),
@@ -337,17 +327,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Duration("fetch_duration", fetchDur),
 		slog.Duration("capture_duration", captureDur),
 		slog.Duration("total_duration", totalDur),
-		slog.Duration("interval", interval),
 	)
-
-	// Surface a warning whenever the full cycle did not fit inside the poll
-	// interval — this is the direct "is OCR keeping up" signal.
-	if totalDur >= interval {
-		p.log.Warn("poll: cycle exceeded interval — OCR/capture cannot keep up",
-			slog.Duration("total_duration", totalDur),
-			slog.Duration("interval", interval),
-			slog.Duration("capture_duration", captureDur))
-	}
 	return nil
 }
 

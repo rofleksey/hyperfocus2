@@ -19,7 +19,6 @@ twitch:
   game_id: "491487"    # Dead by Daylight
 
 poll:
-  interval: "5m"
   page_size: 100
   page_delay: "1s"
   preview_width: 640

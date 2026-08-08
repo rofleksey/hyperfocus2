@@ -47,7 +47,6 @@ type Twitch struct {
 }
 
 type Poll struct {
-	Interval         Duration `yaml:"interval"`
 	PageSize         int      `yaml:"page_size"`
 	PageDelay        Duration `yaml:"page_delay"`
 	PreviewWidth     int      `yaml:"preview_width"`
@@ -148,10 +147,6 @@ func applyDefaults(c *Config) {
 
 	setStr(&c.Twitch.GameID, "491487") // Dead by Daylight
 
-	if c.Poll.Interval == 0 {
-		c.Poll.Interval = Duration(5 * time.Minute)
-	}
-	setInt(&c.Poll.PageSize, 100)
 	if c.Poll.PageDelay == 0 {
 		c.Poll.PageDelay = Duration(time.Second)
 	}
