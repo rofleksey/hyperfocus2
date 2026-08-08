@@ -196,19 +196,32 @@ func (p *Poll) doPoll(ctx context.Context) error {
 
 	// -----------------------------------------------------------------------
 	// Phase 3 — capture previews (always) + resolve VODs (only if needed).
+	// OCR survivor names are extracted in parallel with downloads: every
+	// successfully saved preview is fed into a queue consumed by a batching
+	// goroutine that dispatches OCR subprocesses as enough paths accumulate.
+	// Both downloads and OCR are waited on before the cycle proceeds.
 	// -----------------------------------------------------------------------
 	captureStart := time.Now()
-	p.captureAll(ctx, results)
+
+	if p.ocr != nil && p.ocrCfg.IsEnabled() {
+		p.captureAndOCR(ctx, results)
+	} else {
+		p.captureAll(ctx, results, nil)
+	}
 	captureDur := time.Since(captureStart)
 
 	vodResolved := 0
 	previewOk := 0
+	survivorsFound := 0
 	for _, r := range results {
 		if r.vodID != "" {
 			vodResolved++
 		}
 		if r.previewFile != "" {
 			previewOk++
+		}
+		if len(r.survivorNames) > 0 {
+			survivorsFound++
 		}
 	}
 	p.log.Debug("poll: capture+vod complete",
@@ -217,46 +230,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("vods_fetched_new", vodResolved),
 		slog.Int("vods_skipped", sessionsWithVod),
 		slog.Duration("duration", captureDur))
-
-	// -----------------------------------------------------------------------
-	// Phase 3.5 — OCR survivor names from captured previews (best-effort).
-	// One batched call over every preview path; failures are logged and do not
-	// abort the cycle (samples get empty survivor_names instead).
-	// -----------------------------------------------------------------------
-	ocrDur := time.Duration(0)
-	survivorsFound := 0
-	if p.ocr != nil && p.ocrCfg.IsEnabled() {
-		paths := make([]string, 0, previewOk)
-		for i := range results {
-			if results[i].previewFile != "" {
-				paths = append(paths, p.prev.Path(results[i].previewFile))
-			}
-		}
-		if len(paths) > 0 {
-			ocrStart := time.Now()
-			p.log.Info("ocr: phase start", slog.Int("images", len(paths)))
-			namesByPath, ocrErr := p.ocr.ExtractSurvivors(ctx, paths)
-			ocrDur = time.Since(ocrStart)
-			if ocrErr != nil {
-				p.log.Warn("poll: OCR phase failed; continuing with empty survivor names",
-					slog.Any("error", ocrErr), slog.Duration("duration", ocrDur))
-			}
-			for i := range results {
-				if results[i].previewFile == "" {
-					continue
-				}
-				names := namesByPath[p.prev.Path(results[i].previewFile)]
-				if len(names) > 0 {
-					results[i].survivorNames = names
-					survivorsFound++
-				}
-			}
-			p.log.Info("ocr: phase done",
-				slog.Int("images", len(paths)),
-				slog.Int("samples_with_names", survivorsFound),
-				slog.Duration("duration", ocrDur))
-		}
-	}
 
 	// -----------------------------------------------------------------------
 	// Phase 4 — second DB tx: attach new VODs + snapshot + close unseen.
@@ -363,7 +336,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("vods_missed", len(results)-sessionsWithVod-vodResolved),
 		slog.Duration("fetch_duration", fetchDur),
 		slog.Duration("capture_duration", captureDur),
-		slog.Duration("ocr_duration", ocrDur),
 		slog.Duration("total_duration", totalDur),
 		slog.Duration("interval", interval),
 	)
@@ -374,7 +346,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		p.log.Warn("poll: cycle exceeded interval — OCR/capture cannot keep up",
 			slog.Duration("total_duration", totalDur),
 			slog.Duration("interval", interval),
-			slog.Duration("ocr_duration", ocrDur),
 			slog.Duration("capture_duration", captureDur))
 	}
 	return nil
@@ -405,10 +376,109 @@ func (p *Poll) fetchWithRetry(ctx context.Context) ([]entity.LiveStream, error) 
 }
 
 // ---------------------------------------------------------------------------
-// captureAll — concurrent preview download + VOD lookup for every stream.
+// captureAndOCR — captureAll + parallel OCR via a producer-consumer queue.
+// Previews are downloaded concurrently, and as each file lands on disk its path
+// is fed into a channel. A batching goroutine collects paths into groups of
+// ocrBatchSize and dispatches OCR subprocesses (up to 2 concurrently) so that
+// OCR overlaps with ongoing downloads. The method blocks until all downloads
+// and all OCR subprocesses are finished, then attaches the extracted survivor
+// names to the results in place. OCR failures are non-fatal (logged, skipped).
 // ---------------------------------------------------------------------------
 
-func (p *Poll) captureAll(ctx context.Context, results []streamResult) {
+const ocrBatchSize = 500
+
+func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
+	previewCount := len(results)
+	if previewCount == 0 {
+		return
+	}
+
+	ocrPaths := make(chan string, previewCount)
+
+	type batchResult struct {
+		data map[string][]string
+		err  error
+	}
+
+	ocrDone := make(chan map[string][]string, 1)
+
+	go func() {
+		merged := make(map[string][]string, previewCount)
+		var mu sync.Mutex
+		sem := make(chan struct{}, 1) // one OCR subprocess at a time (python --workers already parallelizes internally)
+		var ocrWg sync.WaitGroup
+		batch := make([]string, 0, ocrBatchSize)
+
+		flush := func() {
+			if len(batch) == 0 {
+				return
+			}
+			// Copy the batch so the slice can be reused while the goroutine runs.
+			b := make([]string, len(batch))
+			copy(b, batch)
+			batch = batch[:0]
+			ocrWg.Add(1)
+			go func(paths []string) {
+				defer ocrWg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				namesByPath, err := p.ocr.ExtractSurvivors(ctx, paths)
+				if err != nil {
+					p.log.Warn("ocr: batch failed", slog.Any("error", err),
+						slog.Int("images", len(paths)))
+					return
+				}
+				mu.Lock()
+				for k, v := range namesByPath {
+					merged[k] = v
+				}
+				mu.Unlock()
+				p.log.Debug("ocr: batch done",
+					slog.Int("images", len(paths)),
+					slog.Int("with_names", len(namesByPath)))
+			}(b)
+		}
+
+		p.log.Info("ocr: streaming collector started",
+			slog.Int("expected_images", previewCount),
+			slog.Int("batch_size", ocrBatchSize))
+
+		for path := range ocrPaths {
+			batch = append(batch, path)
+			if len(batch) >= ocrBatchSize {
+				flush()
+			}
+		}
+		flush() // final partial batch
+		ocrWg.Wait()
+		ocrDone <- merged
+		p.log.Info("ocr: streaming collector finished",
+			slog.Int("images_total", previewCount),
+			slog.Int("samples_with_names", len(merged)))
+	}()
+
+	p.captureAll(ctx, results, ocrPaths)
+	close(ocrPaths)
+	ocrResults := <-ocrDone
+
+	for i := range results {
+		if results[i].previewFile == "" {
+			continue
+		}
+		names := ocrResults[p.prev.Path(results[i].previewFile)]
+		if len(names) > 0 {
+			results[i].survivorNames = names
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// captureAll — concurrent preview download + VOD lookup for every stream.
+// When ocrPaths is non-nil, each successfully saved preview path is sent to it
+// so OCR can run in parallel with the remaining downloads.
+// ---------------------------------------------------------------------------
+
+func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths chan<- string) {
 	if len(results) == 0 {
 		return
 	}
@@ -442,6 +512,9 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult) {
 						slog.Any("error", err))
 				} else {
 					r.previewFile = fn
+					if ocrPaths != nil {
+						ocrPaths <- p.prev.Path(fn)
+					}
 				}
 			}
 
