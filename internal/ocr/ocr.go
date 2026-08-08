@@ -84,8 +84,7 @@ func New(cfg config.OCR, log *slog.Logger) (*Service, error) {
 	log.Info("ocr: configured",
 		slog.String("python", pyBin),
 		slog.String("script_dir", tmp),
-		slog.Int("workers", cfg.Workers),
-		slog.Duration("timeout", cfg.Timeout.Std()))
+		slog.Int("workers", cfg.Workers))
 	return s, nil
 }
 
@@ -98,13 +97,6 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	if !s.cfg.IsEnabled() || len(paths) == 0 {
 		return out, nil
 	}
-
-	timeout := s.cfg.Timeout.Std()
-	if timeout <= 0 {
-		timeout = 120 * time.Second
-	}
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	workers := s.cfg.Workers
 	if workers <= 0 {
@@ -120,7 +112,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	if pyBin == "" {
 		pyBin = "python3"
 	}
-	cmd := exec.CommandContext(cctx, pyBin, args...)
+	cmd := exec.CommandContext(ctx, pyBin, args...)
 	cmd.Stderr = os.Stderr
 
 	pr, err := cmd.StdoutPipe()
@@ -131,8 +123,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	started := time.Now()
 	s.log.Info("ocr: batch start",
 		slog.Int("images", len(paths)),
-		slog.Int("workers", workers),
-		slog.Duration("timeout", timeout))
+		slog.Int("workers", workers))
 
 	if err := cmd.Start(); err != nil {
 		s.log.Warn("ocr: failed to start subprocess", slog.Any("error", err))
@@ -172,8 +163,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	if waitErr != nil {
 		s.log.Warn("ocr: subprocess reported an error",
 			slog.Any("error", waitErr),
-			slog.Duration("duration", elapsed),
-			slog.Bool("timed_out", cctx.Err() == context.DeadlineExceeded))
+			slog.Duration("duration", elapsed))
 		return out, oops.Wrap(waitErr)
 	}
 	return out, nil
