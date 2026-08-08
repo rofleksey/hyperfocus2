@@ -1,6 +1,8 @@
 package http
 
 import (
+		"strings"
+
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -37,7 +39,8 @@ func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(sw, r)
 			duration := time.Since(start)
 
-			if r.Method == http.MethodGet && sw.status == http.StatusOK && r.URL.Path == "/api/healthz" {
+			if r.Method == http.MethodGet && sw.status == http.StatusOK &&
+				(r.URL.Path == "/api/healthz" || strings.HasPrefix(r.URL.Path, "/previews/")) {
 				return
 			}
 			log.Info("http",
