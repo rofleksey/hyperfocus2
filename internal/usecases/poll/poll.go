@@ -41,12 +41,10 @@ type Repository interface {
 	RunInTx(ctx context.Context, f func(ctx context.Context) error) error
 }
 
-// PreviewStore captures and persists a preview image and derives a fast
-// low-resolution thumbnail from it.
+// PreviewStore captures and persists a preview image.
 type PreviewStore interface {
 	FetchAndSave(ctx context.Context, url string) (string, error)
 	Path(filename string) string
-	MakeThumbnail(srcName string) (string, error)
 }
 
 // OCRGateway extracts survivor usernames from preview images in a single batch.
@@ -122,7 +120,6 @@ type streamResult struct {
 	stream        entity.LiveStream
 	sessionID     int64
 	previewFile   string
-	thumbFile     string
 	vodID         string
 	vodCreated    time.Time
 	vodDuration   time.Duration
@@ -206,7 +203,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 
 	vodResolved := 0
 	previewOk := 0
-	thumbOk := 0
 	for _, r := range results {
 		if r.vodID != "" {
 			vodResolved++
@@ -214,14 +210,10 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		if r.previewFile != "" {
 			previewOk++
 		}
-		if r.thumbFile != "" {
-			thumbOk++
-		}
 	}
 	p.log.Debug("poll: capture+vod complete",
 		slog.Int("streams", len(results)),
 		slog.Int("previews_ok", previewOk),
-		slog.Int("thumbs_ok", thumbOk),
 		slog.Int("vods_fetched_new", vodResolved),
 		slog.Int("vods_skipped", sessionsWithVod),
 		slog.Duration("duration", captureDur))
@@ -364,7 +356,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("streams", len(streams)),
 		slog.Int64("snapshot_id", snapshotID),
 		slog.Int("previews", previewOk),
-		slog.Int("thumbs", thumbOk),
 		slog.Int("previews_failed", len(results)-previewOk),
 		slog.Int("survivors_found", survivorsFound),
 		slog.Int("vods_new", vodResolved),
@@ -451,21 +442,6 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult) {
 						slog.Any("error", err))
 				} else {
 					r.previewFile = fn
-					// Derive a fast low-resolution thumbnail for the gallery grid.
-					// Best-effort: a missing thumb just makes the frontend fall
-					// back to the full preview.
-					thumbStart := time.Now()
-					if _, tErr := p.prev.MakeThumbnail(fn); tErr != nil {
-						p.log.Debug("poll: thumbnail failed",
-							slog.String("login", r.stream.Login),
-							slog.String("file", fn),
-							slog.Any("error", tErr))
-					} else {
-						r.thumbFile = fn
-						p.log.Debug("poll: thumbnail generated",
-							slog.String("file", fn),
-							slog.Duration("duration", time.Since(thumbStart)))
-					}
 				}
 			}
 

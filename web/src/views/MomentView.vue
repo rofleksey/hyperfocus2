@@ -116,10 +116,6 @@ function scorePct(s: Stream): string {
   return Math.round(s.fuzzy_score * 100) + "%";
 }
 
-function thumbSrc(s: Stream): string | undefined {
-  return s.thumb_url || s.preview_url || undefined;
-}
-
 onMounted(load);
 </script>
 
@@ -164,9 +160,9 @@ onMounted(load);
         </div>
         <a class="gallery-thumb-link" @click.prevent="openDetail(stream)" href="#">
           <img
-            v-if="thumbSrc(stream)"
+            v-if="stream.preview_url"
             class="gallery-thumb"
-            :src="thumbSrc(stream)"
+            :src="stream.preview_url"
             :alt="stream.display_name"
             loading="lazy"
           />
