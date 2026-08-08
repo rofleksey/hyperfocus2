@@ -13,19 +13,24 @@ COPY . .
 COPY --from=frontend /app/dist ./web/dist
 RUN go build -o /out/hyperfocus ./cmd/server
 
-FROM python:3.12-alpine
+# The runtime base is glibc-based (Debian slim) rather than Alpine: onnxruntime
+# and opencv-python-headless only publish manylinux (glibc) wheels, so a musl
+# base cannot install them. The Go binary is built fully static (CGO_ENABLED=0)
+# so it runs unchanged on glibc.
+FROM python:3.12-slim
 ENV ENVIRONMENT=production
 ENV CGO_ENABLED=0
 WORKDIR /opt
 
 # Runtime dependencies for survivor-name OCR (RapidOCR / PaddleOCR-ONNX).
-# opencv-python-headless needs libGL/libgomp; rapidocr_onnxruntime pulls ONNX
-# models on first run via pip (a few MB) at install time.
-RUN apk update && \
-    apk add --no-cache curl ca-certificates libgomp mesa-gl && \
-    update-ca-certificates && \
-    addgroup -g 65532 -S hyperfocus && \
-    adduser -S -u 65532 -G hyperfocus -h /opt -s /sbin/nologin hyperfocus && \
+# libglib2.0-0 + libgomp1 are shared-lib deps of opencv/onnxruntime; libgl1 is a
+# fallback for OpenCV. rapidocr_onnxruntime pulls the ONNX models via pip.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl ca-certificates libglib2.0-0 libgomp1 libgl1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --system --gid 65532 hyperfocus && \
+    useradd --system --uid 65532 --gid 65532 --home-dir /opt --shell /sbin/nologin hyperfocus && \
     pip install --no-cache-dir \
         rapidocr-onnxruntime==1.2.3 \
         onnxruntime==1.28.0 \
