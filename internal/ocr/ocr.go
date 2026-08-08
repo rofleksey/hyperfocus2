@@ -73,12 +73,16 @@ func New(cfg config.OCR, log *slog.Logger) (*Service, error) {
 	}
 	s.path = tmp
 
-	if _, err := exec.LookPath(s.cfg.PythonBin); err != nil {
+	pyBin := s.cfg.PythonBin
+	if pyBin == "" {
+		pyBin = "python3"
+	}
+	if _, err := exec.LookPath(pyBin); err != nil {
 		log.Warn("ocr: python interpreter not found on PATH; OCR will fail each cycle",
-			slog.String("python_bin", s.cfg.PythonBin))
+			slog.String("python_bin", pyBin))
 	}
 	log.Info("ocr: configured",
-		slog.String("python", s.cfg.PythonBin),
+		slog.String("python", pyBin),
 		slog.String("script_dir", tmp),
 		slog.Int("workers", cfg.Workers),
 		slog.Duration("timeout", cfg.Timeout.Std()))
@@ -112,7 +116,11 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	args = append(args, script, "--json", "--workers", fmt.Sprintf("%d", workers))
 	args = append(args, paths...)
 
-	cmd := exec.CommandContext(cctx, s.cfg.PythonBin, args...)
+	pyBin := s.cfg.PythonBin
+	if pyBin == "" {
+		pyBin = "python3"
+	}
+	cmd := exec.CommandContext(cctx, pyBin, args...)
 	cmd.Stderr = os.Stderr
 
 	pr, err := cmd.StdoutPipe()

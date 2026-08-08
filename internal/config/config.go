@@ -72,11 +72,11 @@ type Storage struct {
 }
 
 // OCR configures the survivor-name OCR subprocess invoked once per poll cycle.
-// The OCR pipeline is embedded into the Go binary and extracted at startup, so
-// no external script directory is needed. python_bin defaults to `python3` on
-// PATH; point it at a venv if the system python lacks the dependencies.
-// Enabled is a pointer so an explicit `enabled: false` in YAML is honored while
-// an omitted field still defaults to enabled.
+// The OCR pipeline is embedded into the Go binary and extracted at startup into
+// a temporary directory — no external paths needed. python_bin is optional:
+// leave empty (defaults to `python3` on PATH) for Docker; set it to a venv
+// path for local dev. Enabled is a pointer so an explicit `enabled: false` in
+// YAML is honored while an omitted field still defaults to enabled.
 type OCR struct {
 	Enabled   *bool    `yaml:"enabled"`
 	PythonBin string   `yaml:"python_bin"`
@@ -183,7 +183,6 @@ func applyDefaults(c *Config) {
 		t := true
 		c.OCR.Enabled = &t
 	}
-	setStr(&c.OCR.PythonBin, "python3")
 	setInt(&c.OCR.Workers, 2)
 	if c.OCR.Timeout == 0 {
 		c.OCR.Timeout = Duration(120 * time.Second)

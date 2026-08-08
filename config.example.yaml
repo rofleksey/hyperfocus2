@@ -41,7 +41,7 @@ storage:
 
 ocr:
   enabled: true             # set false to skip survivor-name OCR entirely
-  python_bin: "python3"     # only change if your python3 lacks the deps (point at a venv)
+  # python_bin: ""          # optional: empty = python3 (fine for Docker); set to venv path for local dev
   workers: 2                # python OCR worker processes per batch
   timeout: "120s"           # whole-batch deadline; aborts OCR if exceeded
 
