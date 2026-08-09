@@ -110,6 +110,12 @@ function scorePct(s: Stream): string {
   return Math.round(s.fuzzy_score * 100) + "%";
 }
 
+function scoreColor(s: Stream): Record<string, string> {
+  if (s.fuzzy_score == null) return {};
+  const pct = s.fuzzy_score * 100;
+  return { background: pct >= 50 ? "#16a34a" : "#dc2626" };
+}
+
 onMounted(load);
 </script>
 
@@ -148,7 +154,7 @@ onMounted(load);
           <span class="gallery-name" @click="openDetail(stream)" role="button" tabindex="0">
             {{ stream.display_name }}
           </span>
-          <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :title="'fuzzy match: ' + scorePct(stream)">
+          <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :style="scoreColor(stream)" :title="'fuzzy match: ' + scorePct(stream)">
             {{ scorePct(stream) }}
           </span>
         </div>
@@ -317,7 +323,6 @@ onMounted(load);
   font-weight: 700;
   padding: 0.05rem 0.35rem;
   border-radius: 3px;
-  background: var(--p-primary-color, #6366f1);
   color: #fff;
 }
 
