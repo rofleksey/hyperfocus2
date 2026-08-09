@@ -164,6 +164,8 @@ onMounted(load);
             class="gallery-thumb"
             :src="stream.thumb_url || stream.preview_url"
             :alt="stream.display_name"
+            width="480"
+            height="270"
             loading="lazy"
           />
           <span v-else class="muted">No preview</span>
@@ -392,6 +394,8 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px 100px;
 }
 
 .gallery-name {
