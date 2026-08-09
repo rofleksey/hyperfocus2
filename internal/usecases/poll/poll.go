@@ -373,6 +373,7 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
 		return
 	}
 
+	started := time.Now()
 	ocrPaths := make(chan string, previewCount)
 
 	merged := make(map[string][]string, previewCount)
@@ -420,17 +421,21 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
 					flush()
 				}
 			}
-			flush() // remaining when channel closes
+			flush()
 		}()
 	}
 
 	p.captureAll(ctx, results, ocrPaths)
+	downloadDur := time.Since(started)
 	close(ocrPaths)
 	ocrWg.Wait()
+	ocrDur := time.Since(started)
 
 	p.log.Info("ocr: worker pool finished",
 		slog.Int("images_total", previewCount),
-		slog.Int("samples_with_names", len(merged)))
+		slog.Int("samples_with_names", len(merged)),
+		slog.Duration("download_duration", downloadDur),
+		slog.Duration("ocr_duration", ocrDur))
 
 	for i := range results {
 		if results[i].previewFile == "" {
