@@ -39,10 +39,11 @@ func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(sw, r)
 			duration := time.Since(start)
 
-			if r.Method == http.MethodGet && sw.status == http.StatusOK &&
-				(r.URL.Path == "/api/healthz" || strings.HasPrefix(r.URL.Path, "/previews/")) {
-				return
-			}
+		if r.Method == http.MethodGet &&
+			(sw.status == http.StatusOK || sw.status == http.StatusPartialContent) &&
+			(r.URL.Path == "/api/healthz" || strings.HasPrefix(r.URL.Path, "/previews/")) {
+			return
+		}
 			log.Info("http",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
