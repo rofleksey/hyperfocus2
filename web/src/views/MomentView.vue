@@ -172,6 +172,7 @@ onMounted(load);
         </a>
       </div>
     </div>
+    <div v-if="loading" class="loading-spinner"><span class="spinner"></span></div>
     <p v-else-if="!loading" class="muted">No streams found for this moment.</p>
 
     <Dialog v-model:visible="filtersVisible" header="Filters" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }">
@@ -504,5 +505,24 @@ onMounted(load);
   color: var(--p-primary-color, #6366f1);
   text-decoration: none;
   font-size: 0.85rem;
+}
+
+.loading-spinner {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--p-surface-700, #374151);
+  border-top-color: var(--p-primary-color, #6366f1);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>
