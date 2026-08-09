@@ -19,12 +19,9 @@ RUN CGO_ENABLED=0 go build -o /out/hyperfocus ./cmd/server
 # ca-certificates is needed for outbound TLS (Twitch API); curl powers the
 # healthcheck.
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates curl && \
-    addgroup -S -g 65532 hyperfocus && \
-    adduser -S -D -H -u 65532 -G hyperfocus -h /opt hyperfocus
+RUN apk add --no-cache ca-certificates curl
 WORKDIR /opt
 COPY --from=build /out/hyperfocus /opt/hyperfocus
-USER hyperfocus:hyperfocus
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/api/healthz || exit 1
