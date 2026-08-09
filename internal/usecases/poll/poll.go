@@ -437,6 +437,9 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.
 
 	p.captureAll(ctx, results, ocrPaths)
 	downloadDur := time.Since(started)
+	p.log.Info("poll: downloads finished",
+		slog.Int("images", previewCount),
+		slog.Duration("duration", downloadDur))
 	close(ocrPaths)
 	ocrWg.Wait()
 	ocrDur := time.Since(started)
