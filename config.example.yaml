@@ -43,7 +43,8 @@ storage:
 ocr:
   enabled: true             # set false to skip survivor-name OCR entirely
   # python_bin: ""          # optional: empty = python3 (fine for Docker); set to venv path for local dev
-  workers: 2                # python OCR worker processes per batch
+  workers: 1                # Go goroutines running OCR (1 = sequential subprocess)
+  python_workers: 2         # Python threads per subprocess for ONNX inference
 
 log:
   level: "info"           # debug | info | warn | error

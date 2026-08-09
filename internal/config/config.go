@@ -79,9 +79,10 @@ type Storage struct {
 // path for local dev. Enabled is a pointer so an explicit `enabled: false` in
 // YAML is honored while an omitted field still defaults to enabled.
 type OCR struct {
-	Enabled   *bool  `yaml:"enabled"`
-	PythonBin string `yaml:"python_bin"`
-	Workers   int    `yaml:"workers"`
+	Enabled       *bool  `yaml:"enabled"`
+	PythonBin     string `yaml:"python_bin"`
+	Workers       int    `yaml:"workers"`
+	PythonWorkers int    `yaml:"python_workers"`
 }
 
 // IsEnabled reports whether OCR is enabled, defaulting to true when the field is
@@ -181,7 +182,8 @@ func applyDefaults(c *Config) {
 		t := true
 		c.OCR.Enabled = &t
 	}
-	setInt(&c.OCR.Workers, 2)
+	setInt(&c.OCR.Workers, 1)
+	setInt(&c.OCR.PythonWorkers, 2)
 
 	setStr(&c.Log.Level, "info")
 	setStr(&c.Log.Format, "console")

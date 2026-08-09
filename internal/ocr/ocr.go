@@ -84,7 +84,8 @@ func New(cfg config.OCR, log *slog.Logger) (*Service, error) {
 	log.Info("ocr: configured",
 		slog.String("python", pyBin),
 		slog.String("script_dir", tmp),
-		slog.Int("workers", cfg.Workers))
+		slog.Int("workers", cfg.Workers),
+		slog.Int("python_workers", cfg.PythonWorkers))
 	return s, nil
 }
 
@@ -98,7 +99,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 		return out, nil
 	}
 
-	workers := s.cfg.Workers
+	workers := s.cfg.PythonWorkers
 	if workers <= 0 {
 		workers = 1
 	}

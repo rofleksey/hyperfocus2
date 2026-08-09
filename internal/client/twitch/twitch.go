@@ -13,23 +13,22 @@ import (
 
 	"github.com/nicklaw5/helix/v2"
 	"github.com/samber/oops"
+	"golang.org/x/time/rate"
 
 	"hyperfocus/internal/config"
 	"hyperfocus/internal/entity"
 )
 
-// Client wraps a Helix client with app-access-token management and a shared
-// rate limiter that enforces the Twitch API rate limit (800 req/min).
+// Client wraps a Helix client with app-access-token management and a rate
+// limiter at 8 req/s (480/min), well under Twitch's 800 req/min limit.
 type Client struct {
-	cfg      config.Twitch
-	helix    *helix.Client
-	http     *http.Client
-	log      *slog.Logger
-	mu       sync.Mutex
-	token    string
-	expires  time.Time
-	limiter  chan struct{}
-	limStop  chan struct{}
+	cfg     config.Twitch
+	helix   *helix.Client
+	log     *slog.Logger
+	mu      sync.Mutex
+	token   string
+	expires time.Time
+	limiter *rate.Limiter
 }
 
 // New creates and validates a Client by obtaining its first app access token.
@@ -45,8 +44,12 @@ func New(cfg config.Twitch, log *slog.Logger) (*Client, error) {
 		return nil, oops.Wrap(err)
 	}
 
-	c := &Client{cfg: cfg, helix: hc, http: httpClient, log: log}
-	c.startLimiter(8) // 8 req/s = 480/min, safe under Twitch's 800/min
+	c := &Client{
+		cfg:     cfg,
+		helix:   hc,
+		log:     log,
+		limiter: rate.NewLimiter(rate.Limit(8), 8),
+	}
 	if err := c.refresh(); err != nil {
 		c.log.Error("twitch: initial token refresh failed", slog.Any("error", err))
 		return nil, err
@@ -55,37 +58,9 @@ func New(cfg config.Twitch, log *slog.Logger) (*Client, error) {
 	return c, nil
 }
 
-// startLimiter launches a background goroutine that fills the token bucket at
-// the given rate (tokens per second) up to a maximum burst of 2× the rate.
-func (c *Client) startLimiter(ratePerSec int) {
-	c.limStop = make(chan struct{})
-	c.limiter = make(chan struct{}, ratePerSec*2)
-	go func() {
-		interval := time.Second / time.Duration(ratePerSec)
-		t := time.NewTicker(interval)
-		defer t.Stop()
-		for {
-			select {
-			case <-c.limStop:
-				return
-			case <-t.C:
-				select {
-				case c.limiter <- struct{}{}:
-				default:
-				}
-			}
-		}
-	}()
-}
-
 // waitLimiter blocks until a rate-limit token is available or ctx is done.
 func (c *Client) waitLimiter(ctx context.Context) error {
-	select {
-	case <-c.limiter:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return c.limiter.Wait(ctx)
 }
 
 // runRefreshLoop periodically refreshes the app access token until ctx is done.

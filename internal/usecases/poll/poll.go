@@ -398,6 +398,7 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.
 	p.log.Info("ocr: worker pool started",
 		slog.Int("expected_images", previewCount),
 		slog.Int("workers", workers),
+		slog.Int("python_workers", p.ocrCfg.PythonWorkers),
 		slog.Int("batch_size", ocrWorkerBatchSize))
 
 	for w := 0; w < workers; w++ {
@@ -488,7 +489,6 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 			r := &results[i]
 
 			sem <- struct{}{}
-			defer func() { <-sem }()
 
 			// Preview — full resolution (for OCR + modal).
 			previewURL := buildPreviewURL(r.stream.ThumbnailURL, p.cfg.PreviewWidth, p.cfg.PreviewHeight)
@@ -525,6 +525,10 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 					}
 				}
 			}
+
+			// Release download slot before VOD fetch so the rate limiter
+			// does not block image downloading for other streams.
+			<-sem
 
 			// VOD — only if session doesn't already have one.
 			if r.skipVodFetch {
