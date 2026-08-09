@@ -19,17 +19,18 @@ func (r *Repository) InsertSample(ctx context.Context, s entity.StreamSample) er
 	}
 	_, err := r.db(ctx).Exec(ctx, `
 INSERT INTO stream_samples
-    (snapshot_id, session_id, streamer_id, viewer_count, title, language, tags, started_at, vod_offset_seconds, preview_filename, survivor_names)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    (snapshot_id, session_id, streamer_id, viewer_count, title, language, tags, started_at, vod_offset_seconds, preview_filename, thumb_filename, survivor_names)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (snapshot_id, session_id) DO UPDATE SET
     viewer_count       = EXCLUDED.viewer_count,
     title              = EXCLUDED.title,
     language           = EXCLUDED.language,
     tags               = EXCLUDED.tags,
     preview_filename   = EXCLUDED.preview_filename,
+    thumb_filename     = EXCLUDED.thumb_filename,
     survivor_names     = EXCLUDED.survivor_names;`,
 		s.SnapshotID, s.SessionID, s.StreamerID, s.ViewerCount, s.Title, s.Language, s.Tags,
-		s.StartedAt, s.VodOffsetSeconds, s.PreviewFilename, s.SurvivorNames)
+		s.StartedAt, s.VodOffsetSeconds, s.PreviewFilename, s.ThumbFilename, s.SurvivorNames)
 	return err
 }
 
@@ -40,7 +41,7 @@ ON CONFLICT (snapshot_id, session_id) DO UPDATE SET
 func (r *Repository) FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int) ([]entity.SampleDetail, error) {
 	baseSelect := `
 SELECT s.snapshot_id, s.session_id, s.streamer_id, s.viewer_count, s.title, s.language,
-       s.tags, s.started_at, s.vod_offset_seconds, s.preview_filename, s.survivor_names,
+       s.tags, s.started_at, s.vod_offset_seconds, s.preview_filename, s.thumb_filename, s.survivor_names,
        st.login, st.display_name, st.profile_image_url, sess.vod_id
 FROM stream_samples s
 JOIN streamers st ON st.twitch_user_id = s.streamer_id
@@ -76,7 +77,7 @@ func scanSampleDetails(rows pgx.Rows) ([]entity.SampleDetail, error) {
 		var d entity.SampleDetail
 		if err := rows.Scan(
 			&d.SnapshotID, &d.SessionID, &d.StreamerID, &d.ViewerCount, &d.Title, &d.Language,
-			&d.Tags, &d.StartedAt, &d.VodOffsetSeconds, &d.PreviewFilename, &d.SurvivorNames,
+			&d.Tags, &d.StartedAt, &d.VodOffsetSeconds, &d.PreviewFilename, &d.ThumbFilename, &d.SurvivorNames,
 			&d.Login, &d.DisplayName, &d.ProfileImageURL, &d.VodID,
 		); err != nil {
 			return nil, err

@@ -47,14 +47,16 @@ type Twitch struct {
 }
 
 type Poll struct {
-	PageSize         int      `yaml:"page_size"`
-	PageDelay        Duration `yaml:"page_delay"`
-	PreviewWidth     int      `yaml:"preview_width"`
-	PreviewHeight    int      `yaml:"preview_height"`
-	PreviewWorkers   int      `yaml:"preview_workers"`
-	PreviewTimeout   Duration `yaml:"preview_timeout"`
-	FetchMaxAttempts int      `yaml:"fetch_max_attempts"`
-	FetchDelay       Duration `yaml:"fetch_delay"`
+	PageSize           int      `yaml:"page_size"`
+	PageDelay          Duration `yaml:"page_delay"`
+	PreviewWidth       int      `yaml:"preview_width"`
+	PreviewHeight      int      `yaml:"preview_height"`
+	ThumbPreviewWidth  int      `yaml:"thumb_preview_width"`
+	ThumbPreviewHeight int      `yaml:"thumb_preview_height"`
+	PreviewWorkers     int      `yaml:"preview_workers"`
+	PreviewTimeout     Duration `yaml:"preview_timeout"`
+	FetchMaxAttempts   int      `yaml:"fetch_max_attempts"`
+	FetchDelay         Duration `yaml:"fetch_delay"`
 }
 
 type Vod struct {
@@ -151,6 +153,8 @@ func applyDefaults(c *Config) {
 	}
 	setInt(&c.Poll.PreviewWidth, 1280)
 	setInt(&c.Poll.PreviewHeight, 720)
+	setInt(&c.Poll.ThumbPreviewWidth, 480)
+	setInt(&c.Poll.ThumbPreviewHeight, 270)
 	setInt(&c.Poll.PreviewWorkers, 16)
 	if c.Poll.PreviewTimeout == 0 {
 		c.Poll.PreviewTimeout = Duration(10 * time.Second)

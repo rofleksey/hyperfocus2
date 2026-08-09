@@ -16,5 +16,6 @@ type StreamSample struct {
 	StartedAt        time.Time
 	VodOffsetSeconds *int
 	PreviewFilename  *string
+	ThumbFilename    *string
 	SurvivorNames    []string
 }

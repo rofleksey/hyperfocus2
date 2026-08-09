@@ -114,6 +114,7 @@ type streamResult struct {
 	stream        entity.LiveStream
 	sessionID     int64
 	previewFile   string
+	thumbFile     string
 	vodID         string
 	vodCreated    time.Time
 	vodDuration   time.Duration
@@ -284,6 +285,11 @@ func (p *Poll) doPoll(ctx context.Context) error {
 				f := r.previewFile
 				fn = &f
 			}
+			var tn *string
+			if r.thumbFile != "" {
+				t := r.thumbFile
+				tn = &t
+			}
 			var off *int
 			if r.vodID != "" && !r.vodCreated.IsZero() {
 				o := int(now.Sub(r.vodCreated).Seconds())
@@ -303,6 +309,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 				StartedAt:        r.stream.StartedAt,
 				VodOffsetSeconds: off,
 				PreviewFilename:  fn,
+				ThumbFilename:    tn,
 				SurvivorNames:    r.survivorNames,
 			}); err != nil {
 				return oops.Wrap(err)
@@ -479,7 +486,7 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Preview — always.
+			// Preview — full resolution (for OCR + modal).
 			previewURL := buildPreviewURL(r.stream.ThumbnailURL, p.cfg.PreviewWidth, p.cfg.PreviewHeight)
 			if previewURL != "" {
 				fctx, cancel := context.WithTimeout(ctx, p.cfg.PreviewTimeout.Std())
@@ -494,6 +501,23 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 					r.previewFile = fn
 					if ocrPaths != nil {
 						ocrPaths <- p.prev.Path(fn)
+					}
+				}
+			}
+
+			// Thumb — low resolution (for gallery grid).
+			if r.previewFile != "" {
+				thumbURL := buildPreviewURL(r.stream.ThumbnailURL, p.cfg.ThumbPreviewWidth, p.cfg.ThumbPreviewHeight)
+				if thumbURL != "" {
+					tctx, cancel := context.WithTimeout(ctx, p.cfg.PreviewTimeout.Std())
+					tn, err := p.prev.FetchAndSave(tctx, thumbURL)
+					cancel()
+					if err != nil {
+						p.log.Warn("poll: thumb preview failed",
+							slog.String("login", r.stream.Login),
+							slog.Any("error", err))
+					} else {
+						r.thumbFile = tn
 					}
 				}
 			}

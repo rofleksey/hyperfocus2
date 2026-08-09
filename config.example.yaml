@@ -23,6 +23,8 @@ poll:
   page_delay: "1s"
   preview_width: 640
   preview_height: 360
+  thumb_preview_width: 480
+  thumb_preview_height: 270
   preview_workers: 16
   preview_timeout: "10s"
   fetch_max_attempts: 3

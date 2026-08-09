@@ -17,6 +17,7 @@ export interface Stream {
   started_at: string;
   vod_offset_seconds?: number;
   preview_url?: string;
+  thumb_url?: string;
   vod_url?: string;
   twitch_url?: string;
   survivor_names: string[];

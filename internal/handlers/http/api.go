@@ -75,6 +75,7 @@ type streamDTO struct {
 	StartedAt        time.Time `json:"started_at"`
 	VodOffsetSeconds *int      `json:"vod_offset_seconds,omitempty"`
 	PreviewURL       string    `json:"preview_url,omitempty"`
+	ThumbURL         string    `json:"thumb_url,omitempty"`
 	VodURL           string    `json:"vod_url,omitempty"`
 	TwitchURL        string    `json:"twitch_url,omitempty"`
 	SurvivorNames    []string  `json:"survivor_names"`
@@ -122,6 +123,9 @@ func toStreamDTO(d entity.SampleDetail) streamDTO {
 	}
 	if d.PreviewFilename != nil && *d.PreviewFilename != "" {
 		out.PreviewURL = "/previews/" + *d.PreviewFilename
+	}
+	if d.ThumbFilename != nil && *d.ThumbFilename != "" {
+		out.ThumbURL = "/previews/thumbs/" + *d.ThumbFilename
 	}
 	if d.VodID != nil && *d.VodID != "" {
 		out.VodURL = "https://www.twitch.tv/videos/" + *d.VodID + "?t=" + formatOffset(d.VodOffsetSeconds)

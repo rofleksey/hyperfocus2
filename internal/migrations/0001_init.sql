@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS stream_samples (
   started_at         TIMESTAMPTZ NOT NULL,
   vod_offset_seconds INT,
   preview_filename   TEXT,
+  thumb_filename     TEXT,
   survivor_names     TEXT[] NOT NULL DEFAULT '{}',
   PRIMARY KEY (snapshot_id, session_id)
 );

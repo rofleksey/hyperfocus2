@@ -160,9 +160,9 @@ onMounted(load);
         </div>
         <a class="gallery-thumb-link" @click.prevent="openDetail(stream)" href="#">
           <img
-            v-if="stream.preview_url"
+            v-if="stream.thumb_url || stream.preview_url"
             class="gallery-thumb"
-            :src="stream.preview_url"
+            :src="stream.thumb_url || stream.preview_url"
             :alt="stream.display_name"
             loading="lazy"
           />

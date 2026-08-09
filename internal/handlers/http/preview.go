@@ -22,3 +22,17 @@ func (a *API) Preview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
 	http.ServeFile(w, r, path)
 }
+
+// Thumb serves a low-resolution thumbnail from the thumb directory.
+func (a *API) Thumb(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("filename")
+	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
+		httputil.Problem(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	path := filepath.Join(a.previews.Dir(), name)
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+	http.ServeFile(w, r, path)
+}
