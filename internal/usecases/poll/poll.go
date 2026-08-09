@@ -38,10 +38,11 @@ type PreviewStore interface {
 	Path(filename string) string
 }
 
-// OCRGateway extracts survivor usernames from preview images in a single batch.
-// It is invoked once per poll cycle after previews have been captured.
+// OCRGateway extracts survivor usernames from a single preview image by
+// delegating to the external OCR microservice. It is invoked per image as soon
+// as each preview is captured.
 type OCRGateway interface {
-	ExtractSurvivors(ctx context.Context, paths []string) (map[string][]string, error)
+	ExtractSurvivors(ctx context.Context, path string) ([]string, error)
 }
 
 // Deps holds the collaborators for New.
@@ -237,17 +238,17 @@ func (p *Poll) doPoll(ctx context.Context) error {
 				tn = &t
 			}
 			if err := p.repo.InsertSample(tctx, entity.StreamSample{
-				SnapshotID:    snapshotID,
-				SessionID:     r.sessionID,
-				StreamerID:    r.stream.TwitchUserID,
-				ViewerCount:   r.stream.ViewerCount,
-				Title:         r.stream.Title,
-				Language:      r.stream.Language,
-				Tags:          r.stream.Tags,
-				StartedAt:     r.stream.StartedAt,
+				SnapshotID:      snapshotID,
+				SessionID:       r.sessionID,
+				StreamerID:      r.stream.TwitchUserID,
+				ViewerCount:     r.stream.ViewerCount,
+				Title:           r.stream.Title,
+				Language:        r.stream.Language,
+				Tags:            r.stream.Tags,
+				StartedAt:       r.stream.StartedAt,
 				PreviewFilename: fn,
 				ThumbFilename:   tn,
-				SurvivorNames: r.survivorNames,
+				SurvivorNames:   r.survivorNames,
 			}); err != nil {
 				return oops.Wrap(err)
 			}
@@ -299,16 +300,13 @@ func (p *Poll) fetchWithRetry(ctx context.Context) ([]entity.LiveStream, error) 
 }
 
 // ---------------------------------------------------------------------------
-// captureAndOCR — captureAll + parallel OCR via a worker pool over a channel.
-// Each downloaded preview path is sent into a channel. N workers pull from it,
-// accumulating small batches (ocrWorkerBatchSize images) and dispatching each
-// batch to a single OCR subprocess. Batching amortizes the ~200ms ONNX model
-// load per python process start; the small batch size keeps latency low so OCR
-// overlaps well with downloads. The method blocks until all downloads and OCR
-// work are finished.
+// captureAndOCR — captureAll + parallel OCR over a channel.
+// Each downloaded preview path is sent into a channel and N workers pull paths
+// one at a time, POSTing each to the OCR microservice. There is no batching:
+// the microservice keeps the ONNX model resident, so per-image requests are
+// cheap and low-latency, overlapping well with the remaining downloads. The
+// method blocks until all downloads and OCR work are finished.
 // ---------------------------------------------------------------------------
-
-const ocrWorkerBatchSize = 50
 
 func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.Duration, time.Duration) {
 	previewCount := len(results)
@@ -330,42 +328,27 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.
 
 	p.log.Info("ocr: worker pool started",
 		slog.Int("expected_images", previewCount),
-		slog.Int("workers", workers),
-		slog.Int("python_workers", p.ocrCfg.PythonWorkers),
-		slog.Int("batch_size", ocrWorkerBatchSize))
+		slog.Int("workers", workers))
 
 	for w := 0; w < workers; w++ {
 		ocrWg.Add(1)
 		go func() {
 			defer ocrWg.Done()
-			batch := make([]string, 0, ocrWorkerBatchSize)
-			flush := func() {
-				if len(batch) == 0 {
-					return
-				}
-				b := make([]string, len(batch))
-				copy(b, batch)
-				batch = batch[:0]
-				namesByPath, err := p.ocr.ExtractSurvivors(ctx, b)
+			for path := range ocrPaths {
+				names, err := p.ocr.ExtractSurvivors(ctx, path)
 				if err != nil {
-					p.log.Warn("ocr: batch failed",
+					p.log.Warn("ocr: request failed",
 						slog.Any("error", err),
-						slog.Int("images", len(b)))
-					return
+						slog.String("image", path))
+					continue
+				}
+				if len(names) == 0 {
+					continue
 				}
 				mu.Lock()
-				for k, v := range namesByPath {
-					merged[k] = v
-				}
+				merged[path] = names
 				mu.Unlock()
 			}
-			for path := range ocrPaths {
-				batch = append(batch, path)
-				if len(batch) >= ocrWorkerBatchSize {
-					flush()
-				}
-			}
-			flush()
 		}()
 	}
 

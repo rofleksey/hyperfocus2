@@ -67,17 +67,19 @@ type Storage struct {
 	DataDir string `yaml:"data_dir"`
 }
 
-// OCR configures the survivor-name OCR subprocess invoked once per poll cycle.
-// The OCR pipeline is embedded into the Go binary and extracted at startup into
-// a temporary directory — no external paths needed. python_bin is optional:
-// leave empty (defaults to `python3` on PATH) for Docker; set it to a venv
-// path for local dev. Enabled is a pointer so an explicit `enabled: false` in
-// YAML is honored while an omitted field still defaults to enabled.
+// OCR configures the survivor-name OCR client. OCR runs in an external
+// microservice (hyperfocus2-ocr) that keeps the RapidOCR / PaddleOCR-ONNX
+// model resident, so each preview is POSTed to it individually — there are no
+// batches and no per-cycle model load. api_url is the base URL of that service
+// (e.g. "http://localhost:8081" or a Traefik frontend fronting N replicas).
+// workers is the number of Go goroutines issuing concurrent OCR requests.
+// Enabled is a pointer so an explicit `enabled: false` in YAML is honored while
+// an omitted field still defaults to enabled.
 type OCR struct {
-	Enabled       *bool  `yaml:"enabled"`
-	PythonBin     string `yaml:"python_bin"`
-	Workers       int    `yaml:"workers"`
-	PythonWorkers int    `yaml:"python_workers"`
+	Enabled *bool    `yaml:"enabled"`
+	APIURL  string   `yaml:"api_url"`
+	Workers int      `yaml:"workers"`
+	Timeout Duration `yaml:"timeout"`
 }
 
 // IsEnabled reports whether OCR is enabled, defaulting to true when the field is
@@ -173,8 +175,11 @@ func applyDefaults(c *Config) {
 		t := true
 		c.OCR.Enabled = &t
 	}
+	setStr(&c.OCR.APIURL, "http://localhost:8081")
 	setInt(&c.OCR.Workers, 1)
-	setInt(&c.OCR.PythonWorkers, 2)
+	if c.OCR.Timeout == 0 {
+		c.OCR.Timeout = Duration(15 * time.Second)
+	}
 
 	setStr(&c.Log.Level, "info")
 	setStr(&c.Log.Format, "console")
