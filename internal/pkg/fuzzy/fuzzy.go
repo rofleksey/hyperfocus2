@@ -23,8 +23,9 @@ import (
 )
 
 // Threshold is the default cutoff above which a candidate is considered a
-// (loose) match. Callers may lower it to be even more permissive.
-const Threshold = 0.2
+// (loose) match. Tuned to reject random noise while still passing genuine
+// OCR near-misses (subsequence matches start at 0.35).
+const Threshold = 0.35
 
 // Score returns a 0..1 fuzzy similarity of query against candidate. An empty
 // query or candidate scores 0.

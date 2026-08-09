@@ -141,12 +141,6 @@ func rankBySurvivor(query string, samples []entity.SampleDetail) []entity.Sample
 	out := make([]scored, 0, len(samples))
 	for _, s := range samples {
 		best := fuzzy.BestScore(query, s.SurvivorNames)
-		// Small tiebreak: the streamer's own login/display name, so a query that
-		// happens to match the broadcaster still ranks well even with no OCR
-		// names. Capped below the real survivor-name signal.
-		if lb := 0.7 * fuzzy.Score(query, s.Login+" "+s.DisplayName); lb > best {
-			best = lb
-		}
 		if best < fuzzy.Threshold {
 			continue
 		}
