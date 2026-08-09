@@ -121,7 +121,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 	}
 
 	started := time.Now()
-	s.log.Info("ocr: batch start",
+	s.log.Debug("ocr: image start",
 		slog.Int("images", len(paths)),
 		slog.Int("workers", workers))
 
@@ -146,19 +146,13 @@ func (s *Service) ExtractSurvivors(ctx context.Context, paths []string) (map[str
 
 	waitErr := cmd.Wait()
 	elapsed := time.Since(started)
-	perImage := time.Duration(0)
-	if n := len(paths); n > 0 {
-		perImage = elapsed / time.Duration(n)
-	}
 
 	matched := len(out)
-	failed := len(paths) - matched
-	s.log.Info("ocr: batch done",
+	s.log.Debug("ocr: image done",
 		slog.Int("images", len(paths)),
 		slog.Int("ok", matched),
-		slog.Int("no_names", failed),
-		slog.Duration("duration", elapsed),
-		slog.Duration("per_image_avg", perImage))
+		slog.Int("no_names", len(paths)-matched),
+		slog.Duration("duration", elapsed))
 
 	if waitErr != nil {
 		s.log.Warn("ocr: subprocess reported an error",
