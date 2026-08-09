@@ -75,12 +75,6 @@ onMounted(() => load(props.id ?? (route.params.id as string)));
           <Tag v-else value="offline" severity="secondary" />
         </template>
       </Column>
-      <Column header="VOD" style="width: 120px">
-        <template #body="{ data }">
-          <a v-if="data.vod_url" :href="data.vod_url" target="_blank" rel="noopener" class="muted">Open VOD</a>
-          <span v-else class="muted">—</span>
-        </template>
-      </Column>
     </DataTable>
   </section>
 </template>

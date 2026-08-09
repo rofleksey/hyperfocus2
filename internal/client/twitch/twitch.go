@@ -6,8 +6,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -163,47 +161,6 @@ func (c *Client) GetLiveGameStreams(ctx context.Context) ([]entity.LiveStream, e
 	return out, nil
 }
 
-// GetVideosByUser returns the most recent archived videos for a broadcaster.
-// Used to resolve a live session's vod_id (matching stream_id).
-func (c *Client) GetVideosByUser(ctx context.Context, userID string) ([]entity.Video, error) {
-	if err := c.ensureToken(); err != nil {
-		return nil, err
-	}
-
-	c.log.Debug("twitch: fetching videos", slog.String("user_id", userID))
-
-	if err := c.waitLimiter(ctx); err != nil {
-		return nil, err
-	}
-	resp, err := c.helix.GetVideos(&helix.VideosParams{
-		UserID: userID,
-		Type:   "archive",
-		First:  20,
-	})
-	if err != nil {
-		c.log.Error("twitch: get videos api error",
-			slog.Any("error", err),
-			slog.String("user_id", userID))
-		return nil, oops.Wrap(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		c.log.Error("twitch: get videos non-ok status",
-			slog.Int("status", resp.StatusCode),
-			slog.String("message", resp.ErrorMessage),
-			slog.String("user_id", userID))
-		return nil, oops.Errorf("get videos: status %d: %s", resp.StatusCode, resp.ErrorMessage)
-	}
-
-	out := make([]entity.Video, 0, len(resp.Data.Videos))
-	for _, v := range resp.Data.Videos {
-		out = append(out, mapVideo(v, c.log))
-	}
-	c.log.Debug("twitch: videos fetched",
-		slog.String("user_id", userID),
-		slog.Int("count", len(out)))
-	return out, nil
-}
-
 func mapStream(s helix.Stream) entity.LiveStream {
 	return entity.LiveStream{
 		TwitchStreamID: s.ID,
@@ -220,81 +177,10 @@ func mapStream(s helix.Stream) entity.LiveStream {
 	}
 }
 
-func mapVideo(v helix.Video, log *slog.Logger) entity.Video {
-	var streamID *string
-	if strings.TrimSpace(v.StreamID) != "" {
-		sid := v.StreamID
-		streamID = &sid
-	}
-	dur := parseTwitchDuration(v.Duration)
-	t := parseTime(v.CreatedAt)
-	if t.IsZero() && v.CreatedAt != "" {
-		log.Warn("twitch: failed to parse video created_at",
-			slog.String("vod_id", v.ID),
-			slog.String("raw", v.CreatedAt))
-	}
-	vid := entity.Video{
-		VodID:     v.ID,
-		StreamID:  streamID,
-		UserID:    v.UserID,
-		Title:     v.Title,
-		CreatedAt: t,
-		Duration:  dur,
-		Thumbnail: v.ThumbnailURL,
-		URL:       v.URL,
-	}
-	return vid
-}
-
-func parseTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t.UTC()
-}
-
 // utc returns the UTC-normalized time, preserving the zero value.
 func utc(t time.Time) time.Time {
 	if t.IsZero() {
 		return t
 	}
 	return t.UTC()
-}
-
-// parseTwitchDuration parses Twitch's "1h2m3s" / "30m10s" / "45s" format.
-func parseTwitchDuration(s string) time.Duration {
-	var h, m, sec int
-	parts := strings.NewReader(s)
-	read := func(suffix byte) (int, bool) {
-		var num strings.Builder
-		for {
-			ch, _, err := parts.ReadRune()
-			if err != nil {
-				return 0, false
-			}
-			if ch == rune(suffix) {
-				n, err := strconv.Atoi(num.String())
-				if err != nil {
-					return 0, false
-				}
-				return n, true
-			}
-			if ch < '0' || ch > '9' {
-				_ = parts.UnreadRune()
-				return 0, false
-			}
-			num.WriteRune(ch)
-		}
-	}
-	if v, ok := read('h'); ok {
-		h = v
-	}
-	if v, ok := read('m'); ok {
-		m = v
-	}
-	if v, ok := read('s'); ok {
-		sec = v
-	}
-	return time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(sec)*time.Second
 }

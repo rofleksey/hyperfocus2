@@ -1,6 +1,6 @@
 // Command hyperfocus is the entrypoint for the DBD live stream history
 // tracker. It reads ./config.yaml, runs database migrations automatically, then
-// starts the HTTP server, the poller, the VOD resolver and the retention loop.
+// starts the HTTP server, the poller and the retention loop.
 package main
 
 import (

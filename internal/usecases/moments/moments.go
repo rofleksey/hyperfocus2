@@ -30,8 +30,6 @@ type Params struct {
 	Query    string // streamer name (login/display_name) ILIKE filter
 	Survivor string // survivor-name fuzzy search; when set, overrides Sort/Dir
 	Language string
-	HasVod   bool
-	Vod      string // "all", "has", "no" — replaces HasVod
 	Sort     string // viewers | name | started | login
 	Dir      string // asc | desc
 	Limit    int
@@ -74,7 +72,6 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 		slog.String("q", p.Query),
 		slog.String("survivor", p.Survivor),
 		slog.String("lang", p.Language),
-		slog.Bool("has_vod", p.HasVod),
 		slog.String("sort", p.Sort),
 		slog.String("dir", p.Dir))
 
@@ -111,7 +108,7 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 	res.Snapshot = snap
 	res.HasData = true
 
-	samples, err := s.repo.FindSamples(ctx, snap.ID, p.Query, p.Language, p.Vod, p.Sort, p.Dir, p.Limit)
+	samples, err := s.repo.FindSamples(ctx, snap.ID, p.Query, p.Language, "all", p.Sort, p.Dir, p.Limit)
 	if err != nil {
 		return res, oops.Wrap(err)
 	}

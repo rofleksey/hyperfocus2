@@ -10,7 +10,6 @@ import Button from "primevue/button";
       <span class="muted">DBD live stream history</span>
       <span style="flex:1"></span>
       <nav class="nav">
-        <RouterLink to="/calculator"><Button icon="pi pi-calculator" size="small" severity="secondary" title="Calculator" /></RouterLink>
         <RouterLink to="/about"><Button icon="pi pi-info-circle" size="small" severity="secondary" title="About" /></RouterLink>
       </nav>
     </header>

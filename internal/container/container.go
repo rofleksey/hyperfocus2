@@ -25,7 +25,6 @@ import (
 	"hyperfocus/internal/usecases/moments"
 	"hyperfocus/internal/usecases/poll"
 	"hyperfocus/internal/usecases/prune"
-	"hyperfocus/internal/usecases/resolvevod"
 )
 
 // Version is injected at build time via ldflags (see Makefile).
@@ -88,11 +87,8 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 	}
 
 	pollUC := poll.New(poll.Deps{
-		Clock: clock.System(), Logger: log, Gateway: tw, Vods: tw, Repo: repo,
+		Clock: clock.System(), Logger: log, Gateway: tw, Repo: repo,
 		Preview: pv, OCR: ocrSvc, Config: cfg.Poll, OCRConfig: cfg.OCR,
-	})
-	resolveUC := resolvevod.New(resolvevod.Deps{
-		Clock: clock.System(), Logger: log, Gateway: tw, Repo: repo, Config: cfg.Vod,
 	})
 	momentsUC := moments.New(moments.Deps{Logger: log, Repo: repo})
 	pruneUC := prune.New(prune.Deps{
@@ -101,9 +97,8 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 
 	bgCtx, cancel := context.WithCancel(ctx)
 	var bg sync.WaitGroup
-	bg.Add(4)
+	bg.Add(3)
 	go func() { defer bg.Done(); pollUC.Run(bgCtx) }()
-	go func() { defer bg.Done(); resolveUC.Run(bgCtx) }()
 	go func() { defer bg.Done(); pruneUC.Run(bgCtx) }()
 	go func() { defer bg.Done(); tw.RunRefreshLoop(bgCtx) }()
 
@@ -111,7 +106,6 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		Logger:    log,
 		Moments:   momentsUC,
 		Streamers: repo,
-		Vods:      repo,
 		Previews:  pv,
 		Version:   Version,
 	}, server.Config{Addr: cfg.Service.HTTPAddr, Version: Version})

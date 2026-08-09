@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
 import MomentView from "./views/MomentView.vue";
-import CalculatorView from "./views/CalculatorView.vue";
 import StreamerView from "./views/StreamerView.vue";
 import AboutView from "./views/AboutView.vue";
 import PrivacyView from "./views/PrivacyView.vue";
@@ -11,7 +10,6 @@ export default createRouter({
   routes: [
     { path: "/", redirect: "/moment" },
     { path: "/moment", name: "moment", component: MomentView },
-    { path: "/calculator", name: "calculator", component: CalculatorView },
     { path: "/streamer/:id", name: "streamer", component: StreamerView, props: true },
     { path: "/about", name: "about", component: AboutView },
     { path: "/privacy", name: "privacy", component: PrivacyView },

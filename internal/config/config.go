@@ -18,7 +18,6 @@ type Config struct {
 	DB      DB      `yaml:"db"`
 	Twitch  Twitch  `yaml:"twitch"`
 	Poll    Poll    `yaml:"poll"`
-	Vod     Vod     `yaml:"vod"`
 	Prune   Prune   `yaml:"prune"`
 	Storage Storage `yaml:"storage"`
 	OCR     OCR     `yaml:"ocr"`
@@ -57,10 +56,6 @@ type Poll struct {
 	PreviewTimeout     Duration `yaml:"preview_timeout"`
 	FetchMaxAttempts   int      `yaml:"fetch_max_attempts"`
 	FetchDelay         Duration `yaml:"fetch_delay"`
-}
-
-type Vod struct {
-	ResolveInterval Duration `yaml:"resolve_interval"`
 }
 
 type Prune struct {
@@ -163,10 +158,6 @@ func applyDefaults(c *Config) {
 	setInt(&c.Poll.FetchMaxAttempts, 3)
 	if c.Poll.FetchDelay == 0 {
 		c.Poll.FetchDelay = Duration(2 * time.Second)
-	}
-
-	if c.Vod.ResolveInterval == 0 {
-		c.Vod.ResolveInterval = Duration(2 * time.Minute)
 	}
 
 	if c.Prune.Interval == 0 {

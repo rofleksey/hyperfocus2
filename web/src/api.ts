@@ -15,10 +15,8 @@ export interface Stream {
   language?: string;
   tags: string[];
   started_at: string;
-  vod_offset_seconds?: number;
   preview_url?: string;
   thumb_url?: string;
-  vod_url?: string;
   twitch_url?: string;
   survivor_names: string[];
   fuzzy_score?: number;
@@ -42,7 +40,6 @@ export function fetchMoment(
   q: string,
   survivor: string,
   language: string,
-  vod: string,
   sort: string,
   dir: string,
 ): Promise<MomentResponse> {
@@ -51,7 +48,6 @@ export function fetchMoment(
   if (q) p.set("q", q);
   if (survivor) p.set("survivor", survivor);
   if (language) p.set("language", language);
-  if (vod && vod !== "all") p.set("vod", vod);
   if (sort) p.set("sort", sort);
   if (dir) p.set("dir", dir);
   return getJson<MomentResponse>(`/api/moments?${p.toString()}`);
@@ -77,7 +73,6 @@ export interface StreamerSession {
   twitch_stream_id: string;
   started_at: string;
   ended_at?: string;
-  vod_url?: string;
 }
 
 export function fetchStreamer(id: string): Promise<{ streamer: StreamerSummary; sessions: StreamerSession[] }> {

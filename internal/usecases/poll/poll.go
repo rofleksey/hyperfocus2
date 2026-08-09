@@ -1,7 +1,6 @@
 // Package poll is the usecase that periodically records a snapshot of every
 // live Dead by Daylight stream. For each stream it captures a CDN preview
-// image and resolves the corresponding archive VOD, storing both on the
-// per-moment sample. Previews and VODs are fetched concurrently.
+// image. Previews are fetched concurrently.
 package poll
 
 import (
@@ -23,11 +22,6 @@ type StreamsGateway interface {
 	GetLiveGameStreams(ctx context.Context) ([]entity.LiveStream, error)
 }
 
-// VideosGateway is the port for fetching archive videos for a broadcaster.
-type VideosGateway interface {
-	GetVideosByUser(ctx context.Context, userID string) ([]entity.Video, error)
-}
-
 // Repository is the persistence port needed by the poll usecase.
 type Repository interface {
 	UpsertStreamer(ctx context.Context, s entity.Streamer) error
@@ -35,9 +29,6 @@ type Repository interface {
 	CloseUnseenSessions(ctx context.Context, seenIDs []string, now time.Time) (int64, error)
 	InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int) (int64, error)
 	InsertSample(ctx context.Context, s entity.StreamSample) error
-	SetSessionVod(ctx context.Context, sessionID int64, vodID string, vodCreatedAt time.Time) error
-	UpsertVod(ctx context.Context, v entity.Vod) error
-	RecomputeSampleOffsets(ctx context.Context, sessionID int64) error
 	RunInTx(ctx context.Context, f func(ctx context.Context) error) error
 }
 
@@ -58,7 +49,6 @@ type Deps struct {
 	Clock     clock.Clock
 	Logger    *slog.Logger
 	Gateway   StreamsGateway
-	Vods      VideosGateway
 	Repo      Repository
 	Preview   PreviewStore
 	OCR       OCRGateway
@@ -71,7 +61,6 @@ type Poll struct {
 	clock   clock.Clock
 	log     *slog.Logger
 	gateway StreamsGateway
-	vods    VideosGateway
 	repo    Repository
 	prev    PreviewStore
 	ocr     OCRGateway
@@ -85,7 +74,7 @@ func New(d Deps) *Poll {
 		d.Clock = clock.System()
 	}
 	return &Poll{
-		clock: d.Clock, log: d.Logger, gateway: d.Gateway, vods: d.Vods,
+		clock: d.Clock, log: d.Logger, gateway: d.Gateway,
 		repo: d.Repo, prev: d.Preview, ocr: d.OCR, cfg: d.Config, ocrCfg: d.OCRConfig,
 	}
 }
@@ -115,11 +104,6 @@ type streamResult struct {
 	sessionID     int64
 	previewFile   string
 	thumbFile     string
-	vodID         string
-	vodCreated    time.Time
-	vodDuration   time.Duration
-	vodURL        string
-	skipVodFetch  bool
 	survivorNames []string
 }
 
@@ -149,7 +133,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("deduped", len(streams)))
 
 	// -----------------------------------------------------------------------
-	// Phase 2 — ensure sessions first so we know which already have a VOD.
+	// Phase 2 — ensure sessions.
 	// -----------------------------------------------------------------------
 	results := make([]streamResult, len(streams))
 	for i, s := range streams {
@@ -167,34 +151,25 @@ func (p *Poll) doPoll(ctx context.Context) error {
 			}); err != nil {
 				return oops.Wrap(err)
 			}
-			sid, existingVod, err := p.repo.EnsureOpenSession(tctx, st.TwitchUserID, st.TwitchStreamID, st.StartedAt)
+			sid, _, err := p.repo.EnsureOpenSession(tctx, st.TwitchUserID, st.TwitchStreamID, st.StartedAt)
 			if err != nil {
 				return oops.Wrap(err)
 			}
 			results[i].sessionID = sid
-			results[i].skipVodFetch = existingVod != nil && *existingVod != ""
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	sessionsWithVod := 0
-	for _, r := range results {
-		if r.skipVodFetch {
-			sessionsWithVod++
-		}
-	}
-	p.log.Debug("poll: sessions created",
-		slog.Int("total", len(results)),
-		slog.Int("already_have_vod", sessionsWithVod))
+	p.log.Debug("poll: sessions created", slog.Int("total", len(results)))
 
 	// -----------------------------------------------------------------------
-	// Phase 3 — capture previews (always) + resolve VODs (only if needed).
-	// OCR survivor names are extracted in parallel with downloads: every
-	// successfully saved preview is fed into a queue consumed by N OCR worker
-	// goroutines, so OCR on an image starts as soon as a worker is free.
-	// Both downloads and OCR are waited on before the cycle proceeds.
+	// Phase 3 — capture previews. OCR survivor names are extracted in
+	// parallel with downloads: every successfully saved preview is fed into a
+	// queue consumed by N OCR worker goroutines, so OCR on an image starts as
+	// soon as a worker is free. Both downloads and OCR are waited on before
+	// the cycle proceeds.
 	// -----------------------------------------------------------------------
 	captureStart := time.Now()
 	var downloadDur, ocrDur time.Duration
@@ -206,13 +181,9 @@ func (p *Poll) doPoll(ctx context.Context) error {
 	}
 	captureDur := time.Since(captureStart)
 
-	vodResolved := 0
 	previewOk := 0
 	survivorsFound := 0
 	for _, r := range results {
-		if r.vodID != "" {
-			vodResolved++
-		}
 		if r.previewFile != "" {
 			previewOk++
 		}
@@ -220,44 +191,18 @@ func (p *Poll) doPoll(ctx context.Context) error {
 			survivorsFound++
 		}
 	}
-	p.log.Debug("poll: capture+vod complete",
+	p.log.Debug("poll: capture complete",
 		slog.Int("streams", len(results)),
 		slog.Int("previews_ok", previewOk),
-		slog.Int("vods_fetched_new", vodResolved),
-		slog.Int("vods_skipped", sessionsWithVod),
 		slog.Duration("duration", captureDur))
 
 	// -----------------------------------------------------------------------
-	// Phase 4 — second DB tx: attach new VODs + snapshot + close unseen.
+	// Phase 4 — second DB tx: snapshot + close unseen.
 	// -----------------------------------------------------------------------
 	seen := make([]string, 0, len(streams))
 	if err := p.repo.RunInTx(ctx, func(tctx context.Context) error {
 		for _, r := range results {
 			seen = append(seen, r.stream.TwitchStreamID)
-
-			if r.vodID != "" && !r.skipVodFetch {
-				dur := int(r.vodDuration.Seconds())
-				if err := p.repo.UpsertVod(tctx, entity.Vod{
-					VodID:           r.vodID,
-					StreamerID:      r.stream.TwitchUserID,
-					StreamID:        &r.stream.TwitchStreamID,
-					StartedAt:       r.vodCreated,
-					DurationSeconds: &dur,
-					URL:             r.vodURL,
-				}); err != nil {
-					return oops.Wrap(err)
-				}
-				if err := p.repo.SetSessionVod(tctx, r.sessionID, r.vodID, r.vodCreated); err != nil {
-					return oops.Wrap(err)
-				}
-				if err := p.repo.RecomputeSampleOffsets(tctx, r.sessionID); err != nil {
-					return oops.Wrap(err)
-				}
-				p.log.Debug("poll: vod attached to session",
-					slog.Int64("session_id", r.sessionID),
-					slog.String("vod_id", r.vodID),
-					slog.String("login", r.stream.Login))
-			}
 		}
 		id, err := p.repo.InsertSnapshot(tctx, now, "twitch", len(streams))
 		if err != nil {
@@ -277,7 +222,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("sessions", len(results)))
 
 	// -----------------------------------------------------------------------
-	// Phase 5 — third DB tx: samples with preview + vod offset.
+	// Phase 5 — third DB tx: samples with preview.
 	// -----------------------------------------------------------------------
 	if err := p.repo.RunInTx(ctx, func(tctx context.Context) error {
 		for _, r := range results {
@@ -291,27 +236,18 @@ func (p *Poll) doPoll(ctx context.Context) error {
 				t := r.thumbFile
 				tn = &t
 			}
-			var off *int
-			if r.vodID != "" && !r.vodCreated.IsZero() {
-				o := int(now.Sub(r.vodCreated).Seconds())
-				if o < 0 {
-					o = 0
-				}
-				off = &o
-			}
 			if err := p.repo.InsertSample(tctx, entity.StreamSample{
-				SnapshotID:       snapshotID,
-				SessionID:        r.sessionID,
-				StreamerID:       r.stream.TwitchUserID,
-				ViewerCount:      r.stream.ViewerCount,
-				Title:            r.stream.Title,
-				Language:         r.stream.Language,
-				Tags:             r.stream.Tags,
-				StartedAt:        r.stream.StartedAt,
-				VodOffsetSeconds: off,
-				PreviewFilename:  fn,
-				ThumbFilename:    tn,
-				SurvivorNames:    r.survivorNames,
+				SnapshotID:    snapshotID,
+				SessionID:     r.sessionID,
+				StreamerID:    r.stream.TwitchUserID,
+				ViewerCount:   r.stream.ViewerCount,
+				Title:         r.stream.Title,
+				Language:      r.stream.Language,
+				Tags:          r.stream.Tags,
+				StartedAt:     r.stream.StartedAt,
+				PreviewFilename: fn,
+				ThumbFilename:   tn,
+				SurvivorNames: r.survivorNames,
 			}); err != nil {
 				return oops.Wrap(err)
 			}
@@ -329,9 +265,6 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("previews", previewOk),
 		slog.Int("previews_failed", len(results)-previewOk),
 		slog.Int("survivors_found", survivorsFound),
-		slog.Int("vods_new", vodResolved),
-		slog.Int("vods_skipped", sessionsWithVod),
-		slog.Int("vods_missed", len(results)-sessionsWithVod-vodResolved),
 		slog.Duration("fetch_duration", fetchDur),
 		slog.Duration("download_duration", downloadDur),
 		slog.Duration("ocr_duration", ocrDur),
@@ -464,7 +397,7 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.
 }
 
 // ---------------------------------------------------------------------------
-// captureAll — concurrent preview download + VOD lookup for every stream.
+// captureAll — concurrent preview download for every stream.
 // When ocrPaths is non-nil, each successfully saved preview path is sent to it
 // so OCR can run in parallel with the remaining downloads.
 // ---------------------------------------------------------------------------
@@ -526,71 +459,11 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 				}
 			}
 
-			// Release download slot before VOD fetch so the rate limiter
-			// does not block image downloading for other streams.
 			<-sem
-
-			// VOD — only if session doesn't already have one.
-			if r.skipVodFetch {
-				return
-			}
-
-			vctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			videos, err := p.vods.GetVideosByUser(vctx, r.stream.TwitchUserID)
-			cancel()
-			if err != nil {
-				p.log.Warn("poll: vod fetch failed",
-					slog.String("login", r.stream.Login), slog.Any("error", err))
-			} else {
-				p.log.Debug("poll: vod fetch ok",
-					slog.String("login", r.stream.Login),
-					slog.Int("videos_returned", len(videos)))
-				v := matchVod(r.stream.TwitchStreamID, r.stream.StartedAt, videos)
-				if v != nil {
-					r.vodID = v.VodID
-					r.vodCreated = v.CreatedAt
-					r.vodDuration = v.Duration
-					r.vodURL = v.URL
-					p.log.Debug("poll: vod matched",
-						slog.String("login", r.stream.Login),
-						slog.String("vod_id", v.VodID),
-						slog.String("vod_stream_id", strPtr(v.StreamID)))
-				} else {
-					p.log.Debug("poll: vod no-match",
-						slog.String("login", r.stream.Login),
-						slog.String("stream_id", r.stream.TwitchStreamID),
-						slog.Time("stream_started", r.stream.StartedAt),
-						slog.Int("videos_checked", len(videos)))
-				}
-			}
 		}(i)
 	}
 	wg.Wait()
 	return time.Since(started)
-}
-
-// matchVod finds the archive video for a stream. Prefers exact stream_id match;
-// falls back to time proximity.
-func matchVod(twitchStreamID string, startedAt time.Time, videos []entity.Video) *entity.Video {
-	for i := range videos {
-		if videos[i].StreamID != nil && *videos[i].StreamID == twitchStreamID {
-			return &videos[i]
-		}
-	}
-	var best *entity.Video
-	bestScore := time.Hour
-	for i := range videos {
-		v := videos[i]
-		d := absDur(v.CreatedAt.Sub(startedAt))
-		if d < bestScore {
-			bestScore = d
-			best = &videos[i]
-		}
-	}
-	if best != nil && bestScore <= 15*time.Minute {
-		return best
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -611,13 +484,6 @@ func buildPreviewURL(template string, w, h int) string {
 	out := strings.ReplaceAll(template, "{width}", itoa(w))
 	out = strings.ReplaceAll(out, "{height}", itoa(h))
 	return out
-}
-
-func strPtr(s *string) string {
-	if s == nil {
-		return "<nil>"
-	}
-	return *s
 }
 
 func absDur(d time.Duration) time.Duration {

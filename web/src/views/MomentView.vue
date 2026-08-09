@@ -13,7 +13,6 @@ const at = ref<Date | null>(route.query.at ? new Date(route.query.at as string) 
 const survivor = ref<string>("");
 const q = ref<string>("");
 const language = ref<string>("");
-const vod = ref<string>("all");
 const sort = ref<string>("viewers");
 const dir = ref<string>("desc");
 const filtersVisible = ref(false);
@@ -28,11 +27,6 @@ const sortOptions = [
 const dirOptions = [
   { label: "Descending", value: "desc" },
   { label: "Ascending", value: "asc" },
-];
-const vodOptions = [
-  { label: "All", value: "all" },
-  { label: "Has VOD", value: "has" },
-  { label: "No VOD", value: "no" },
 ];
 
 const moment = ref<MomentResponse | null>(null);
@@ -90,7 +84,7 @@ async function load() {
   error.value = "";
   try {
     const atParam = at.value ? at.value.toISOString() : "";
-    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, vod.value, sort.value, dir.value);
+    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value);
     if (snapshots.value.length === 0) {
       const snaps = await fetchSnapshots(1000);
       snapshots.value = snaps.data;
@@ -108,7 +102,7 @@ function debounceLoad() {
   timer = setTimeout(load, 300);
 }
 
-watch([survivor, q, language, vod, sort, dir], debounceLoad);
+watch([survivor, q, language, sort, dir], debounceLoad);
 watch(at, debounceLoad);
 
 function scorePct(s: Stream): string {
@@ -194,10 +188,6 @@ onMounted(load);
           <label for="dir">Direction</label>
           <Select id="dir" v-model="dir" :options="dirOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" :disabled="survivorSearchActive" />
         </div>
-        <div class="field">
-          <label for="vod">VOD</label>
-          <Select id="vod" v-model="vod" :options="vodOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" />
-        </div>
         <p v-if="survivorSearchActive" class="muted field-hint">Sort is disabled — survivor search ranks by relevance.</p>
       </div>
     </Dialog>
@@ -257,7 +247,6 @@ onMounted(load);
 
           <div class="detail-links">
             <a v-if="selectedStream.twitch_url" :href="selectedStream.twitch_url" target="_blank" rel="noopener" class="link-btn">Watch on Twitch</a>
-            <a v-if="selectedStream.vod_url" :href="selectedStream.vod_url" target="_blank" rel="noopener" class="link-btn">Watch VOD</a>
           </div>
         </div>
       </div>

@@ -21,7 +21,6 @@ type sessionDTO struct {
 	TwitchStreamID string `json:"twitch_stream_id"`
 	StartedAt      string `json:"started_at"`
 	EndedAt        string `json:"ended_at,omitempty"`
-	VodURL         string `json:"vod_url,omitempty"`
 }
 
 // Streamers handles GET /api/streamers?q=&limit=.
@@ -100,9 +99,6 @@ func toSessionDTO(s entity.SessionDetail) sessionDTO {
 	}
 	if s.EndedAt != nil {
 		out.EndedAt = s.EndedAt.UTC().Format(timeRFC3339)
-	}
-	if s.VodID != nil && *s.VodID != "" {
-		out.VodURL = "https://www.twitch.tv/videos/" + *s.VodID
 	}
 	return out
 }
