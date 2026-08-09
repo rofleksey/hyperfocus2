@@ -197,11 +197,12 @@ func (p *Poll) doPoll(ctx context.Context) error {
 	// Both downloads and OCR are waited on before the cycle proceeds.
 	// -----------------------------------------------------------------------
 	captureStart := time.Now()
+	var downloadDur, ocrDur time.Duration
 
 	if p.ocr != nil && p.ocrCfg.IsEnabled() {
-		p.captureAndOCR(ctx, results)
+		downloadDur, ocrDur = p.captureAndOCR(ctx, results)
 	} else {
-		p.captureAll(ctx, results, nil)
+		downloadDur = p.captureAll(ctx, results, nil)
 	}
 	captureDur := time.Since(captureStart)
 
@@ -332,6 +333,8 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("vods_skipped", sessionsWithVod),
 		slog.Int("vods_missed", len(results)-sessionsWithVod-vodResolved),
 		slog.Duration("fetch_duration", fetchDur),
+		slog.Duration("download_duration", downloadDur),
+		slog.Duration("ocr_duration", ocrDur),
 		slog.Duration("capture_duration", captureDur),
 		slog.Duration("total_duration", totalDur),
 	)
@@ -374,10 +377,10 @@ func (p *Poll) fetchWithRetry(ctx context.Context) ([]entity.LiveStream, error) 
 
 const ocrWorkerBatchSize = 50
 
-func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
+func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.Duration, time.Duration) {
 	previewCount := len(results)
 	if previewCount == 0 {
-		return
+		return 0, 0
 	}
 
 	started := time.Now()
@@ -457,6 +460,7 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
 				slog.String("preview_file", results[i].previewFile))
 		}
 	}
+	return downloadDur, ocrDur
 }
 
 // ---------------------------------------------------------------------------
@@ -465,11 +469,12 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
 // so OCR can run in parallel with the remaining downloads.
 // ---------------------------------------------------------------------------
 
-func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths chan<- string) {
+func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths chan<- string) time.Duration {
 	if len(results) == 0 {
-		return
+		return 0
 	}
 
+	started := time.Now()
 	workers := p.cfg.PreviewWorkers
 	if workers <= 0 {
 		workers = 8
@@ -558,6 +563,7 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 		}(i)
 	}
 	wg.Wait()
+	return time.Since(started)
 }
 
 // matchVod finds the archive video for a stream. Prefers exact stream_id match;
