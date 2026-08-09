@@ -454,10 +454,6 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) (time.
 		names := merged[p.prev.Path(results[i].previewFile)]
 		if len(names) > 0 {
 			results[i].survivorNames = names
-		} else {
-			p.log.Warn("ocr: no names found",
-				slog.String("login", results[i].stream.Login),
-				slog.String("preview_file", results[i].previewFile))
 		}
 	}
 	return downloadDur, ocrDur
