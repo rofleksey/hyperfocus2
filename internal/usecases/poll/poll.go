@@ -357,11 +357,15 @@ func (p *Poll) fetchWithRetry(ctx context.Context) ([]entity.LiveStream, error) 
 
 // ---------------------------------------------------------------------------
 // captureAndOCR — captureAll + parallel OCR via a worker pool over a channel.
-// Each downloaded preview path is sent into a channel consumed by N goroutine
-// workers. Each worker pulls one path, runs OCR on that single image, and
-// writes the result — no batching, so OCR starts as soon as a worker is free.
-// The method blocks until all downloads and OCR work are finished.
+// Each downloaded preview path is sent into a channel. N workers pull from it,
+// accumulating small batches (ocrWorkerBatchSize images) and dispatching each
+// batch to a single OCR subprocess. Batching amortizes the ~200ms ONNX model
+// load per python process start; the small batch size keeps latency low so OCR
+// overlaps well with downloads. The method blocks until all downloads and OCR
+// work are finished.
 // ---------------------------------------------------------------------------
+
+const ocrWorkerBatchSize = 50
 
 func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
 	previewCount := len(results)
@@ -382,26 +386,41 @@ func (p *Poll) captureAndOCR(ctx context.Context, results []streamResult) {
 
 	p.log.Info("ocr: worker pool started",
 		slog.Int("expected_images", previewCount),
-		slog.Int("workers", workers))
+		slog.Int("workers", workers),
+		slog.Int("batch_size", ocrWorkerBatchSize))
 
 	for w := 0; w < workers; w++ {
 		ocrWg.Add(1)
 		go func() {
 			defer ocrWg.Done()
-			for path := range ocrPaths {
-				namesByPath, err := p.ocr.ExtractSurvivors(ctx, []string{path})
-				if err != nil {
-					p.log.Warn("ocr: worker failed",
-						slog.Any("error", err),
-						slog.String("path", path))
-					continue
+			batch := make([]string, 0, ocrWorkerBatchSize)
+			flush := func() {
+				if len(batch) == 0 {
+					return
 				}
-				if names, ok := namesByPath[path]; ok && len(names) > 0 {
-					mu.Lock()
-					merged[path] = names
-					mu.Unlock()
+				b := make([]string, len(batch))
+				copy(b, batch)
+				batch = batch[:0]
+				namesByPath, err := p.ocr.ExtractSurvivors(ctx, b)
+				if err != nil {
+					p.log.Warn("ocr: batch failed",
+						slog.Any("error", err),
+						slog.Int("images", len(b)))
+					return
+				}
+				mu.Lock()
+				for k, v := range namesByPath {
+					merged[k] = v
+				}
+				mu.Unlock()
+			}
+			for path := range ocrPaths {
+				batch = append(batch, path)
+				if len(batch) >= ocrWorkerBatchSize {
+					flush()
 				}
 			}
+			flush() // remaining when channel closes
 		}()
 	}
 
