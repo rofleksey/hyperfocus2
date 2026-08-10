@@ -16,7 +16,6 @@ import (
 type SubscribeRepo interface {
 	GetSubscriberByTwitch(ctx context.Context, twitchLogin string) (*entity.NotificationSubscriber, error)
 	InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber, names []string) (int64, error)
-	GetSubscriberNames(ctx context.Context, subscriberID int64) ([]string, error)
 	UpdateSubscriberStatus(ctx context.Context, subscriberID int64, status string) error
 	DeleteSubscriber(ctx context.Context, subscriberID int64) error
 }
@@ -35,16 +34,14 @@ func NewSubscribeHandler(log *slog.Logger, repo SubscribeRepo, botHelix *twitch.
 }
 
 type subscribeRequest struct {
-	TwitchLogin string   `json:"twitch_login"`
-	SteamURL    string   `json:"steam_url"`
-	Names       []string `json:"names"`
+	TwitchLogin string `json:"twitch_login"`
+	SteamURL    string `json:"steam_url"`
 }
 
 type subscribeResponse struct {
-	Status     string   `json:"status"`
-	SteamName  string   `json:"steam_name"`
-	Names      []string `json:"names"`
-	Message    string   `json:"message,omitempty"`
+	Status    string `json:"status"`
+	SteamName string `json:"steam_name"`
+	Message   string `json:"message,omitempty"`
 }
 
 func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -73,9 +70,6 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 	}
 	req.TwitchLogin = strings.ToLower(strings.TrimSpace(req.TwitchLogin))
 	req.SteamURL = strings.TrimSpace(req.SteamURL)
-	for i := range req.Names {
-		req.Names[i] = strings.ToLower(strings.TrimSpace(req.Names[i]))
-	}
 
 	if req.TwitchLogin == "" || req.SteamURL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "twitch_login and steam_url are required"})
@@ -84,11 +78,9 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 
 	existing, err := h.repo.GetSubscriberByTwitch(r.Context(), req.TwitchLogin)
 	if err == nil && existing != nil {
-		names, _ := h.repo.GetSubscriberNames(r.Context(), existing.ID)
 		writeJSON(w, http.StatusConflict, subscribeResponse{
 			Status:    existing.Status,
 			SteamName: existing.SteamName,
-			Names:     names,
 			Message:   "subscription already exists; type !hyperfocussub in your chat if status is pending",
 		})
 		return
@@ -141,7 +133,7 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 		SteamName:    steamName,
 	}
 
-	id, err := h.repo.InsertSubscriber(r.Context(), sub, req.Names)
+	id, err := h.repo.InsertSubscriber(r.Context(), sub, nil)
 	if err != nil {
 		h.log.Error("subscribe: insert failed", slog.Any("error", err))
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
@@ -156,7 +148,6 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusCreated, subscribeResponse{
 		Status:    "pending",
 		SteamName: steamName,
-		Names:     req.Names,
 		Message:   "type !hyperfocussub in your Twitch chat to verify",
 	})
 }
@@ -172,8 +163,7 @@ func (h *SubscribeHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	names, _ := h.repo.GetSubscriberNames(r.Context(), sub.ID)
-	writeJSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: sub.SteamName, Names: names})
+	writeJSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: sub.SteamName})
 }
 
 func (h *SubscribeHandler) handleDelete(w http.ResponseWriter, r *http.Request) {

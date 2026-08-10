@@ -14,7 +14,6 @@ import (
 
 type Repository interface {
 	ActiveSubscribersWithNames(ctx context.Context) ([]entity.NotificationSubscriber, error)
-	GetSubscriberNames(ctx context.Context, subscriberID int64) ([]string, error)
 	RecentNotification(ctx context.Context, subscriberID int64, detectedName string, cooldown time.Duration) (bool, error)
 	LogNotification(ctx context.Context, subscriberID int64, detectedName string, score float64, snapshotID int64, sourceStreamerID string) error
 }
@@ -125,24 +124,14 @@ func (s *Service) activeSubscribers(ctx context.Context) []cachedSubscriber {
 
 	out := make([]cachedSubscriber, 0, len(subs))
 	for _, sub := range subs {
-		names, err := s.repo.GetSubscriberNames(ctx, sub.ID)
-		if err != nil {
-			s.log.Warn("notify: failed to load names", slog.Any("error", err), slog.Int64("sub_id", sub.ID))
-			continue
+		if nn := fuzzy.Norm(sub.SteamName); nn != "" {
+			out = append(out, cachedSubscriber{
+				ID:           sub.ID,
+				TwitchLogin:  sub.TwitchLogin,
+				TwitchUserID: sub.TwitchUserID,
+				MatchNames:   []string{nn},
+			})
 		}
-		matchNames := make([]string, 0, 1+len(names))
-		matchNames = append(matchNames, fuzzy.Norm(sub.SteamName))
-		for _, n := range names {
-			if nn := fuzzy.Norm(n); nn != "" {
-				matchNames = append(matchNames, nn)
-			}
-		}
-		out = append(out, cachedSubscriber{
-			ID:           sub.ID,
-			TwitchLogin:  sub.TwitchLogin,
-			TwitchUserID: sub.TwitchUserID,
-			MatchNames:   matchNames,
-		})
 	}
 
 	s.cache = out

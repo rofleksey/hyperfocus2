@@ -5,12 +5,11 @@ import InputText from 'primevue/inputtext';
 
 const twitchLogin = ref('');
 const steamURL = ref('');
-const names = ref('');
 const loading = ref(false);
 const error = ref('');
 const success = ref('');
 const status = ref('');
-const existingNames = ref<string[]>([]);
+const steamName = ref('');
 
 async function checkStatus() {
   const login = twitchLogin.value.trim();
@@ -20,12 +19,12 @@ async function checkStatus() {
     if (r.ok) {
       const d = await r.json();
       status.value = d.status;
-      if (d.names) existingNames.value = d.names;
+      steamName.value = d.steam_name || '';
     } else {
       status.value = '';
-      existingNames.value = [];
+      steamName.value = '';
     }
-  } catch { status.value = ''; existingNames.value = []; }
+  } catch { status.value = ''; steamName.value = ''; }
 }
 
 async function subscribe() {
@@ -37,14 +36,13 @@ async function subscribe() {
       body: JSON.stringify({
         twitch_login: twitchLogin.value.trim(),
         steam_url: steamURL.value.trim(),
-        names: names.value.split(',').map((n: string) => n.trim()).filter(Boolean),
       }),
     });
     const d = await r.json();
     if (r.ok) {
       success.value = d.message || 'Subscription request submitted!';
       status.value = d.status;
-      if (d.names) existingNames.value = d.names;
+      steamName.value = d.steam_name || '';
     } else {
       error.value = d.error || d.message || 'Failed to subscribe';
     }
@@ -64,7 +62,7 @@ async function unsubscribe() {
     if (r.ok) {
       success.value = 'Unsubscribed successfully.';
       status.value = '';
-      existingNames.value = [];
+      steamName.value = '';
     } else {
       const d = await r.json();
       error.value = d.error || 'Failed to unsubscribe';
@@ -93,18 +91,13 @@ async function unsubscribe() {
         <InputText id="st" v-model="steamURL" placeholder="https://steamcommunity.com/id/yourname" size="small" />
       </div>
 
-      <div class="field">
-        <label for="nm">Additional in-game names <span class="hint">(comma-separated, optional)</span></label>
-        <InputText id="nm" v-model="names" placeholder="alt_name, old_name" size="small" />
-      </div>
-
       <div v-if="status" class="status-banner" :class="'status-' + status">
         <template v-if="status === 'pending'">
           Status: <strong>Pending</strong> — type <code>!hyperfocussub</code> in your Twitch chat to verify.
         </template>
         <template v-else-if="status === 'active'">
-          Status: <strong>Active</strong> — you're subscribed.
-          <div v-if="existingNames.length">Tracking names: <strong>{{ existingNames.join(', ') }}</strong></div>
+          Status: <strong>Active</strong> — tracking your Steam name.
+          <div v-if="steamName">Current name: <strong>{{ steamName }}</strong></div>
         </template>
       </div>
 
@@ -121,12 +114,11 @@ async function unsubscribe() {
       <h3>How it works</h3>
       <ol>
         <li>Enter your Twitch username and Steam profile URL.</li>
-        <li>Optionally add additional in-game names (aliases, old names).</li>
         <li>Submit — the bot will message you in your Twitch chat.</li>
         <li>Type <code>!hyperfocussub</code> in <strong>your own</strong> Twitch chat to verify.</li>
         <li>Done! You'll get notified when other tracked players appear in a lobby with you.</li>
       </ol>
-      <p class="note">Unverified subscriptions expire after 24 hours. Type <code>!hyperfocusunsub</code> in your chat to unsubscribe anytime.</p>
+      <p class="note">Your Steam display name is kept in sync automatically. Unverified subscriptions expire after 24 hours. Type <code>!hyperfocusunsub</code> in your chat to unsubscribe anytime.</p>
     </div>
   </section>
 </template>
@@ -147,7 +139,6 @@ async function unsubscribe() {
 }
 .field { display: flex; flex-direction: column; gap: 0.25rem; }
 .field label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--p-text-muted-color); }
-.field .hint { text-transform: none; letter-spacing: 0; font-size: 0.7rem; opacity: 0.7; }
 .error { color: var(--p-red-400, #f87171); font-size: 0.85rem; margin: 0; }
 .success { color: var(--p-green-400, #4ade80); font-size: 0.85rem; margin: 0; }
 
