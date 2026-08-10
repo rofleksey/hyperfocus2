@@ -20,6 +20,8 @@ const filtersVisible = ref(false);
 
 const survivorSearchActive = computed(() => survivor.value.trim().length > 0);
 
+const hasFilters = computed(() => q.value.trim() !== "" || language.value.trim() !== "" || sort.value !== "viewers" || dir.value !== "desc");
+
 const PAGE_SIZE = 100;
 const RETENTION_HOURS = 6;
 
@@ -72,20 +74,20 @@ function fmt(date: string): string {
   try { return new Date(date).toLocaleString(); } catch { return date; }
 }
 
+function goNow() {
+  lastSeenLatestAt.value = latestSnapshotAt.value;
+  at.value = new Date();
+  // at change will trigger debounceLoad; do NOT call loadFirstPage directly.
+}
+
 function goPrev() {
   const idx = currentSnapshotIndex.value;
-  if (idx > 0) { at.value = new Date(snapshots.value[idx - 1].taken_at); loadFirstPage(); }
+  if (idx > 0) { at.value = new Date(snapshots.value[idx - 1].taken_at); }
 }
 
 function goNext() {
   const idx = currentSnapshotIndex.value;
-  if (idx >= 0 && idx < snapshots.value.length - 1) { at.value = new Date(snapshots.value[idx + 1].taken_at); loadFirstPage(); }
-}
-
-function goNow() {
-  at.value = new Date();
-  lastSeenLatestAt.value = latestSnapshotAt.value;
-  loadFirstPage();
+  if (idx >= 0 && idx < snapshots.value.length - 1) { at.value = new Date(snapshots.value[idx + 1].taken_at); }
 }
 
 async function loadFirstPage() {
@@ -95,10 +97,8 @@ async function loadFirstPage() {
     moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE);
     allStreams.value = moment.value.streams;
     if (moment.value.streams.length < PAGE_SIZE) hasMore.value = false;
-    if (snapshots.value.length === 0) {
-      const snaps = await fetchSnapshots(1000);
-      snapshots.value = snaps.data;
-    }
+    const snaps = await fetchSnapshots(1000);
+    snapshots.value = snaps.data;
     await checkLatest();
   } catch (e) { error.value = (e as Error).message; moment.value = null; } finally { loading.value = false; }
 }
@@ -218,7 +218,7 @@ onUnmounted(() => {
           <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
           <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
           <Button icon="pi pi-arrow-right" label="Now" size="small" severity="secondary" :class="{ 'now-btn': true, 'now-glow': hasNewerSnapshot }" @click="goNow" />
-          <Button icon="pi pi-sliders-h" label="Filters" size="small" severity="secondary" class="filter-btn" @click="filtersVisible = true" />
+          <Button icon="pi pi-sliders-h" label="Filters" size="small" :severity="hasFilters ? 'primary' : 'secondary'" class="filter-btn" @click="filtersVisible = true" />
         </div>
       </div>
     </div>
