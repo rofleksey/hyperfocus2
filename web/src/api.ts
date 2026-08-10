@@ -42,6 +42,8 @@ export function fetchMoment(
   language: string,
   sort: string,
   dir: string,
+  offset = 0,
+  limit = 100,
 ): Promise<MomentResponse> {
   const p = new URLSearchParams();
   if (at) p.set("at", at);
@@ -50,6 +52,8 @@ export function fetchMoment(
   if (language) p.set("language", language);
   if (sort) p.set("sort", sort);
   if (dir) p.set("dir", dir);
+  p.set("offset", String(offset));
+  p.set("limit", String(limit));
   return getJson<MomentResponse>(`/api/moments?${p.toString()}`);
 }
 

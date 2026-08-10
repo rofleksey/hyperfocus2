@@ -38,7 +38,7 @@ ON CONFLICT (snapshot_id, session_id) DO UPDATE SET
 // fields, optionally filtered by name (login or display_name), language, and
 // vod presence, and ordered by a whitelisted sort key. If limit <= 0, ALL
 // matching rows are returned.
-func (r *Repository) FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int) ([]entity.SampleDetail, error) {
+func (r *Repository) FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int, offset int) ([]entity.SampleDetail, error) {
 	baseSelect := `
 SELECT s.snapshot_id, s.session_id, s.streamer_id, s.viewer_count, s.title, s.language,
        s.tags, s.started_at, s.vod_offset_seconds, s.preview_filename, s.thumb_filename, s.survivor_names,
@@ -63,7 +63,7 @@ ORDER BY ` + buildOrderBy(sort, dir) + ` NULLS LAST`
 	}
 
 	rows, err := r.db(ctx).Query(ctx, baseSelect+`
-LIMIT $5;`, snapshotID, query, language, vod, limit)
+LIMIT $5 OFFSET $6;`, snapshotID, query, language, vod, limit, offset)
 	if err != nil {
 		return nil, err
 	}

@@ -20,7 +20,7 @@ import (
 type Repository interface {
 	SnapshotAtOrBefore(ctx context.Context, t time.Time) (entity.Snapshot, error)
 	SnapshotAtOrAfter(ctx context.Context, t time.Time) (entity.Snapshot, error)
-	FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int) ([]entity.SampleDetail, error)
+	FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int, offset int) ([]entity.SampleDetail, error)
 	ListSnapshots(ctx context.Context, from, to *time.Time, limit int) ([]entity.Snapshot, error)
 }
 
@@ -33,6 +33,7 @@ type Params struct {
 	Sort     string // viewers | name | started | login
 	Dir      string // asc | desc
 	Limit    int
+	Offset   int
 }
 
 // MomentResult is a single moment's answer.
@@ -108,7 +109,15 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 	res.Snapshot = snap
 	res.HasData = true
 
-	samples, err := s.repo.FindSamples(ctx, snap.ID, p.Query, p.Language, "all", p.Sort, p.Dir, p.Limit)
+	// For survivor search the SQL layer must return all rows so ranking is
+	// correct — pagination (limit/offset) is applied in Go after ranking.
+	findLimit := p.Limit
+	findOffset := p.Offset
+	if p.Survivor != "" {
+		findLimit = 0
+		findOffset = 0
+	}
+	samples, err := s.repo.FindSamples(ctx, snap.ID, p.Query, p.Language, "all", p.Sort, p.Dir, findLimit, findOffset)
 	if err != nil {
 		return res, oops.Wrap(err)
 	}
@@ -117,6 +126,15 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 	// (descending). The matcher is intentionally loose so many results surface.
 	if p.Survivor != "" {
 		samples = rankBySurvivor(p.Survivor, samples)
+		// Apply offset/limit after ranking (all results were fetched from SQL).
+		if p.Offset > 0 && p.Offset < len(samples) {
+			samples = samples[p.Offset:]
+		} else if p.Offset >= len(samples) {
+			samples = nil
+		}
+		if p.Limit > 0 && p.Limit < len(samples) {
+			samples = samples[:p.Limit]
+		}
 	}
 	res.Streams = samples
 	s.log.Debug("moment: result", slog.Int("samples", len(samples)))

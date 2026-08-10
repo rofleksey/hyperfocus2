@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import DatePicker from "primevue/datepicker";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
@@ -19,6 +19,8 @@ const filtersVisible = ref(false);
 
 const survivorSearchActive = computed(() => survivor.value.trim().length > 0);
 
+const PAGE_SIZE = 100;
+
 const sortOptions = [
   { label: "Viewer count", value: "viewers" },
   { label: "Name", value: "name" },
@@ -30,9 +32,13 @@ const dirOptions = [
 ];
 
 const moment = ref<MomentResponse | null>(null);
+const allStreams = ref<Stream[]>([]);
 const loading = ref(false);
+const loadingMore = ref(false);
 const error = ref<string>("");
-let timer: ReturnType<typeof setTimeout> | undefined;
+const hasMore = ref(true);
+let offset = 0;
+let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const snapshots = ref<Snapshot[]>([]);
 
@@ -46,7 +52,8 @@ const hasNext = computed(() => currentSnapshotIndex.value >= 0 && currentSnapsho
 const selectedStream = ref<Stream | null>(null);
 const detailVisible = ref(false);
 
-const streams = computed(() => moment.value?.streams ?? []);
+const sentinel = ref<HTMLElement | null>(null);
+let observer: IntersectionObserver | null = null;
 
 function fmt(date: string): string {
   try {
@@ -79,12 +86,17 @@ function goNext() {
   }
 }
 
-async function load() {
+async function loadFirstPage() {
   loading.value = true;
   error.value = "";
+  allStreams.value = [];
+  offset = 0;
+  hasMore.value = true;
   try {
     const atParam = at.value ? at.value.toISOString() : "";
-    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value);
+    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE);
+    allStreams.value = moment.value.streams;
+    if (moment.value.streams.length < PAGE_SIZE) hasMore.value = false;
     if (snapshots.value.length === 0) {
       const snaps = await fetchSnapshots(1000);
       snapshots.value = snaps.data;
@@ -97,13 +109,48 @@ async function load() {
   }
 }
 
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) return;
+  loadingMore.value = true;
+  offset += PAGE_SIZE;
+  try {
+    const atParam = at.value ? at.value.toISOString() : "";
+    const page = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE);
+    if (page.streams.length === 0 || page.streams.length < PAGE_SIZE) {
+      hasMore.value = false;
+    }
+    allStreams.value.push(...page.streams);
+  } catch (_e) {
+    // silently ignore load-more errors; user can scroll-trigger retry
+    offset -= PAGE_SIZE;
+  } finally {
+    loadingMore.value = false;
+  }
+}
+
 function debounceLoad() {
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(load, 300);
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadFirstPage, 300);
+}
+
+function setupObserver() {
+  if (observer) observer.disconnect();
+  if (!sentinel.value) return;
+  observer = new IntersectionObserver((entries) => {
+    if (entries[0]?.isIntersecting) {
+      loadMore();
+    }
+  }, { rootMargin: "400px" });
+  observer.observe(sentinel.value);
 }
 
 watch([survivor, q, language, sort, dir], debounceLoad);
 watch(at, debounceLoad);
+watch(sentinel, setupObserver);
+watch(allStreams, () => {
+  // Re-observe sentinel after DOM update (new items shift the sentinel).
+  setTimeout(setupObserver, 0);
+});
 
 function scorePct(s: Stream): string {
   if (s.fuzzy_score == null) return "";
@@ -116,18 +163,23 @@ function scoreColor(s: Stream): Record<string, string> {
   return { background: pct >= 50 ? "#16a34a" : "#dc2626" };
 }
 
-onMounted(load);
+onMounted(() => {
+  loadFirstPage();
+});
+
+onUnmounted(() => {
+  if (observer) observer.disconnect();
+});
 </script>
 
 <template>
   <section>
     <div class="moment-bar">
-      <span class="muted" style="font-size:0.85rem">
+      <span class="muted moment-timestamp">
         Streamers online at
         {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
         <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
       </span>
-      <span style="flex:1"></span>
       <div class="survivor-search">
         <span class="pi pi-search search-icon"></span>
         <input
@@ -137,7 +189,7 @@ onMounted(load);
           placeholder="Search survivors…"
           autocomplete="off"
         />
-        <span v-if="survivorSearchActive" class="sort-hint">sorted by relevance</span>
+        <span v-if="survivorSearchActive" class="sort-hint">relevance</span>
       </div>
       <div class="moment-nav">
         <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
@@ -148,8 +200,8 @@ onMounted(load);
 
     <p v-if="error" class="muted">Error: {{ error }}</p>
 
-    <div v-if="streams.length" class="gallery-grid">
-      <div v-for="stream in streams" :key="stream.streamer_id" class="gallery-item">
+    <div v-if="allStreams.length" class="gallery-grid">
+      <div v-for="stream in allStreams" :key="stream.streamer_id" class="gallery-item">
         <div class="gallery-headline">
           <span class="gallery-name" @click="openDetail(stream)" role="button" tabindex="0">
             {{ stream.display_name }}
@@ -164,16 +216,20 @@ onMounted(load);
             class="gallery-thumb"
             :src="stream.thumb_url || stream.preview_url"
             :alt="stream.display_name"
-            width="480"
-            height="270"
             loading="lazy"
           />
           <span v-else class="muted">No preview</span>
         </a>
       </div>
     </div>
+
     <div v-if="loading" class="loading-spinner"><span class="spinner"></span></div>
-    <p v-else-if="!loading" class="muted">No streams found for this moment.</p>
+    <p v-else-if="!loading && !allStreams.length" class="muted">No streams found for this moment.</p>
+
+    <div v-if="allStreams.length && !loading" ref="sentinel" class="scroll-sentinel">
+      <span v-if="loadingMore" class="spinner small-spinner"></span>
+      <span v-else-if="!hasMore" class="muted" style="font-size:0.75rem">All streams loaded</span>
+    </div>
 
     <Dialog v-model:visible="filtersVisible" header="Filters" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }">
       <div class="filters-grid">
@@ -269,6 +325,12 @@ onMounted(load);
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.moment-timestamp {
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .moment-nav {
@@ -281,7 +343,9 @@ onMounted(load);
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  min-width: 240px;
+  min-width: 180px;
+  flex: 1;
+  max-width: 320px;
 }
 
 .survivor-input {
@@ -311,6 +375,27 @@ onMounted(load);
   color: var(--p-primary-color, #6366f1);
   white-space: nowrap;
   pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .moment-bar {
+    gap: 0.5rem;
+  }
+
+  .survivor-search {
+    order: 3;
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .moment-nav {
+    order: 2;
+  }
+
+  .moment-timestamp {
+    order: 1;
+    font-size: 0.75rem;
+  }
 }
 
 .gallery-headline {
@@ -382,7 +467,7 @@ onMounted(load);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 @media (max-width: 640px) {
@@ -415,6 +500,8 @@ onMounted(load);
 
 .gallery-thumb {
   width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   max-width: 1280px;
   border-radius: 4px;
   background: #000;
@@ -430,6 +517,8 @@ onMounted(load);
 
 .detail-thumb {
   width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
   max-width: 1280px;
   border-radius: 6px;
   background: #000;
@@ -513,6 +602,13 @@ onMounted(load);
   padding: 2rem 0;
 }
 
+.scroll-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0;
+  min-height: 40px;
+}
+
 .spinner {
   width: 32px;
   height: 32px;
@@ -520,6 +616,12 @@ onMounted(load);
   border-top-color: var(--p-primary-color, #6366f1);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+
+.small-spinner {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
 }
 
 @keyframes spin {

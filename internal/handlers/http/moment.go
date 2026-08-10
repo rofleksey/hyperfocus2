@@ -9,7 +9,7 @@ import (
 	"hyperfocus/internal/usecases/moments"
 )
 
-// Moment handles GET /api/moments?at=&q=&sort=&dir=&limit=.
+// Moment handles GET /api/moments?at=&q=&sort=&dir=&limit=&offset=.
 func (a *API) Moment(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -23,12 +23,17 @@ func (a *API) Moment(w http.ResponseWriter, r *http.Request) {
 		at = t.UTC()
 	}
 
-	// No limit by default: return every stream in the moment. An explicit
-	// ?limit=N (<=100000) is honored if provided.
-	limit := 0
+	limit := 100
 	if raw := q.Get("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 100000 {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 1000 {
 			limit = n
+		}
+	}
+
+	offset := 0
+	if raw := q.Get("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			offset = n
 		}
 	}
 
@@ -40,6 +45,7 @@ func (a *API) Moment(w http.ResponseWriter, r *http.Request) {
 		Sort:     q.Get("sort"),
 		Dir:      q.Get("dir"),
 		Limit:    limit,
+		Offset:   offset,
 	})
 	if err != nil {
 		a.log.Error("moment query failed", "error", err)
