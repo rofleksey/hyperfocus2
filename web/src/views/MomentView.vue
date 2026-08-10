@@ -5,7 +5,7 @@ import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
-import { RouterLink, useRoute } from "vue-router";
+import { useRoute } from "vue-router";
 import { fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type Stream } from "../api";
 
 const route = useRoute();
@@ -278,7 +278,7 @@ onUnmounted(() => {
             <span v-else class="detail-avatar avatar-fallback">{{ initials(selectedStream.display_name) }}</span>
             <div>
               <h2 class="detail-name">
-                <RouterLink :to="`/streamer/${selectedStream.streamer_id}`">{{ selectedStream.display_name }}</RouterLink>
+                <a :href="`https://twitch.tv/${selectedStream.login}`" target="_blank" rel="noopener" class="detail-name-link">{{ selectedStream.display_name }}</a>
               </h2>
               <span class="muted">@{{ selectedStream.login }}</span>
             </div>
@@ -307,21 +307,21 @@ onUnmounted(() => {
 <style scoped>
 .moment-bar {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
 
 .moment-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  display: contents;
 }
 
 .moment-timestamp {
   font-size: 0.85rem;
   white-space: nowrap;
-  flex: 1;
+  flex: 1 0 auto;
+  min-width: 200px;
 }
 
 .moment-nav {
@@ -335,8 +335,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  flex: 1;
+  flex: 1 0 auto;
   max-width: 380px;
+  min-width: 200px;
 }
 
 .survivor-input {
@@ -369,10 +370,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .moment-bar-row {
-    gap: 0.5rem;
-  }
-
   .moment-timestamp {
     font-size: 0.75rem;
   }

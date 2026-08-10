@@ -9,6 +9,7 @@ func Register(mux *http.ServeMux, api *API) {
 	mux.HandleFunc("GET /api/healthz", api.Health)
 	mux.HandleFunc("GET /api/moments", api.Moment)
 	mux.HandleFunc("GET /api/snapshots", api.Snapshots)
+	mux.HandleFunc("GET /api/stats", api.Stats)
 	mux.HandleFunc("GET /api/streamers", api.Streamers)
 	mux.HandleFunc("GET /api/streamers/{id}", api.Streamer)
 	mux.HandleFunc("GET /previews/{filename}", api.Preview)

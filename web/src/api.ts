@@ -82,3 +82,16 @@ export interface StreamerSession {
 export function fetchStreamer(id: string): Promise<{ streamer: StreamerSummary; sessions: StreamerSession[] }> {
   return getJson(`/api/streamers/${encodeURIComponent(id)}`);
 }
+
+export interface SnapshotStat {
+  id: number;
+  taken_at: string;
+  stream_count: number;
+  preview_ok: number;
+  ocr_ok: number;
+  total: number;
+}
+
+export function fetchStats(n = 100): Promise<{ snapshots: SnapshotStat[] }> {
+  return getJson(`/api/stats?n=${n}`);
+}

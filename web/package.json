@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@primevue/themes": "^4.2.5",
+    "chart.js": "^4.5.1",
     "primeicons": "^7.0.0",
     "primevue": "^4.2.5",
     "vue": "^3.5.13",
+    "vue-chartjs": "^5.3.4",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {

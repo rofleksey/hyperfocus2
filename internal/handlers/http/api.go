@@ -19,6 +19,11 @@ type StreamerQuery interface {
 	ListSessionsForStreamer(ctx context.Context, streamerID string, limit int) ([]entity.SessionDetail, error)
 }
 
+// StatsRepo is the read port for the /api/stats endpoint.
+type StatsRepo interface {
+	SnapshotStats(ctx context.Context, n int) ([]entity.SnapshotStat, error)
+}
+
 // PreviewServer exposes the on-disk directory holding preview images.
 type PreviewServer interface {
 	Dir() string
@@ -30,6 +35,7 @@ type Deps struct {
 	Moments   *moments.Service
 	Streamers StreamerQuery
 	Previews  PreviewServer
+	StatsRepo StatsRepo
 	Version   string
 }
 
@@ -39,12 +45,13 @@ type API struct {
 	moments   *moments.Service
 	streamers StreamerQuery
 	previews  PreviewServer
+	statsRepo StatsRepo
 	version   string
 }
 
 // NewAPI builds an API from deps.
 func NewAPI(d Deps) *API {
-	return &API{log: d.Logger, moments: d.Moments, streamers: d.Streamers, previews: d.Previews, version: d.Version}
+	return &API{log: d.Logger, moments: d.Moments, streamers: d.Streamers, previews: d.Previews, statsRepo: d.StatsRepo, version: d.Version}
 }
 
 // snapshotDTO is the JSON shape for a snapshot.

@@ -107,6 +107,7 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		Moments:   momentsUC,
 		Streamers: repo,
 		Previews:  pv,
+		StatsRepo: repo,
 		Version:   Version,
 	}, server.Config{Addr: cfg.Service.HTTPAddr, Version: Version})
 

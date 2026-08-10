@@ -10,6 +10,41 @@ import (
 	"hyperfocus/internal/entity"
 )
 
+// SnapshotStats returns the last N snapshots with aggregated sample counts.
+func (r *Repository) SnapshotStats(ctx context.Context, n int) ([]entity.SnapshotStat, error) {
+	if n < 1 {
+		n = 1
+	}
+	if n > 500 {
+		n = 500
+	}
+	rows, err := r.db(ctx).Query(ctx, `
+SELECT s.id, s.taken_at, s.stream_count,
+       COUNT(ss.snapshot_id) FILTER (WHERE ss.preview_filename IS NOT NULL) AS previews_ok,
+       COUNT(ss.snapshot_id) FILTER (WHERE cardinality(ss.survivor_names) > 0) AS ocr_ok,
+       COUNT(ss.snapshot_id) AS total
+FROM (
+  SELECT id, taken_at, stream_count FROM snapshots
+  ORDER BY taken_at DESC LIMIT $1
+) s
+LEFT JOIN stream_samples ss ON ss.snapshot_id = s.id
+GROUP BY s.id, s.taken_at, s.stream_count
+ORDER BY s.taken_at ASC;`, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []entity.SnapshotStat
+	for rows.Next() {
+		var st entity.SnapshotStat
+		if err := rows.Scan(&st.ID, &st.TakenAt, &st.StreamCount, &st.PreviewOK, &st.OCROK, &st.Total); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
 // InsertSnapshot creates a snapshot row and returns its id.
 func (r *Repository) InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int) (int64, error) {
 	var id int64

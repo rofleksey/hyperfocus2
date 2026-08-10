@@ -22,11 +22,12 @@
     <h3>How it works</h3>
 
     <ul>
-      <li>Twitch's API is polled for all Dead by Daylight streams every ~60 seconds.</li>
-      <li>A low-res preview thumbnail is downloaded from each stream and run
-          through an OCR engine to extract the four survivor names from the
-          bottom-left HUD panel.</li>
-      <li>Snapshots are kept for a rolling window and automatically pruned.</li>
+      <li>Twitch's API is polled continuously — each cycle fetches all live
+          Dead by Daylight streams and downloads a preview thumbnail from each.</li>
+      <li>Previews are processed by an OCR engine that reads the four survivor
+          names from the bottom-left HUD panel.</li>
+      <li>Snapshots are kept for a rolling window (currently 6 hours) and
+          automatically pruned every hour.</li>
       <li>No user data is collected — there are no accounts, no cookies beyond
           what the router needs, and nothing is tracked.</li>
     </ul>
