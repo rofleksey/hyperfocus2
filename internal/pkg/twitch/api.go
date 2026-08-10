@@ -29,12 +29,12 @@ func NewBotHelix(cfg BotConfig, log *slog.Logger) (*BotHelix, error) {
 	}
 
 	b := &BotHelix{helix: hc, log: log, token: token}
-	// Get initial token
 	if err := token.Refresh(context.Background()); err != nil {
 		return nil, oops.Wrap(err)
 	}
 
-	// Validate and get bot's own user ID
+	hc.SetUserAccessToken(token.Get())
+
 	resp, err := hc.GetUsers(&helix.UsersParams{})
 	if err != nil {
 		return nil, oops.Wrap(err)
