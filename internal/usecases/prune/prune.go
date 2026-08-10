@@ -1,5 +1,5 @@
 // Package prune is the usecase enforcing the configured data retention window
-// (default 3 days) across snapshots, sessions, vods, orphan streamers and the
+// (default 72 hours) across snapshots, sessions, vods, orphan streamers and the
 // on-disk preview image files.
 package prune
 
@@ -57,12 +57,12 @@ func (p *Pruner) Run(ctx context.Context) {
 	if interval <= 0 {
 		interval = time.Hour
 	}
-	days := p.cfg.Days
-	if days <= 0 {
-		days = 3
+	hours := p.cfg.Hours
+	if hours <= 0 {
+		hours = 72
 	}
 	p.log.Info("prune loop starting",
-		slog.Duration("interval", interval), slog.Int("retention_days", days))
+		slog.Duration("interval", interval), slog.Int("retention_hours", hours))
 
 	t := time.NewTicker(interval)
 	defer t.Stop()
@@ -71,19 +71,19 @@ func (p *Pruner) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			p.tick(ctx, days)
+			p.tick(ctx, hours)
 		}
 	}
 }
 
-func (p *Pruner) tick(ctx context.Context, days int) {
-	if err := p.doPrune(ctx, days); err != nil {
+func (p *Pruner) tick(ctx context.Context, hours int) {
+	if err := p.doPrune(ctx, hours); err != nil {
 		p.log.Error("prune cycle failed", slog.Any("error", err))
 	}
 }
 
-func (p *Pruner) doPrune(ctx context.Context, days int) error {
-	cutoff := p.clock.Now().UTC().AddDate(0, 0, -days)
+func (p *Pruner) doPrune(ctx context.Context, hours int) error {
+	cutoff := p.clock.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 
 	// Order matters: snapshots first (cascades samples), then sessions, vods,
 	// orphan streamers, and finally the preview files on disk.

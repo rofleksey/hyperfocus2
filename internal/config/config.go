@@ -60,7 +60,7 @@ type Poll struct {
 
 type Prune struct {
 	Interval Duration `yaml:"interval"`
-	Days     int      `yaml:"days"`
+	Hours    int      `yaml:"hours"`
 }
 
 type Storage struct {
@@ -165,8 +165,8 @@ func applyDefaults(c *Config) {
 	if c.Prune.Interval == 0 {
 		c.Prune.Interval = Duration(time.Hour)
 	}
-	if c.Prune.Days <= 0 {
-		c.Prune.Days = 3
+	if c.Prune.Hours <= 0 {
+		c.Prune.Hours = 72
 	}
 
 	setStr(&c.Storage.DataDir, "./data")
