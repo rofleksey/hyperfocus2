@@ -21,6 +21,7 @@ const filtersVisible = ref(false);
 const survivorSearchActive = computed(() => survivor.value.trim().length > 0);
 
 const PAGE_SIZE = 100;
+const RETENTION_HOURS = 6;
 
 const sortOptions = [
   { label: "Viewer count", value: "viewers" },
@@ -32,7 +33,6 @@ const dirOptions = [
   { label: "Ascending", value: "asc" },
 ];
 
-const RETENTION_HOURS = 6;
 const outsideRetention = computed(() => {
   if (!at.value) return false;
   const cutoff = new Date(Date.now() - RETENTION_HOURS * 3600 * 1000);
@@ -49,6 +49,13 @@ let offset = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const snapshots = ref<Snapshot[]>([]);
+const latestSnapshotAt = ref<string>("");
+const hasNewerSnapshot = computed(() => {
+  if (!moment.value?.snapshot?.taken_at || !latestSnapshotAt.value) return false;
+  return latestSnapshotAt.value > moment.value.snapshot.taken_at;
+});
+
+let snapshotPollTimer: ReturnType<typeof setInterval> | undefined;
 
 const currentSnapshotIndex = computed(() => {
   if (!moment.value?.snapshot) return -1;
@@ -66,25 +73,21 @@ function fmt(date: string): string {
 
 function goPrev() {
   const idx = currentSnapshotIndex.value;
-  if (idx > 0) {
-    at.value = new Date(snapshots.value[idx - 1].taken_at);
-    loadFirstPage(true);
-  }
+  if (idx > 0) { at.value = new Date(snapshots.value[idx - 1].taken_at); loadFirstPage(); }
 }
 
 function goNext() {
   const idx = currentSnapshotIndex.value;
-  if (idx >= 0 && idx < snapshots.value.length - 1) {
-    at.value = new Date(snapshots.value[idx + 1].taken_at);
-    loadFirstPage(true);
-  }
+  if (idx >= 0 && idx < snapshots.value.length - 1) { at.value = new Date(snapshots.value[idx + 1].taken_at); loadFirstPage(); }
 }
 
-async function loadFirstPage(nav = false) {
-  loading.value = true;
-  error.value = "";
-  offset = 0;
-  hasMore.value = true;
+function goNow() {
+  at.value = new Date();
+  loadFirstPage();
+}
+
+async function loadFirstPage() {
+  loading.value = true; error.value = ""; offset = 0; hasMore.value = true;
   try {
     const atParam = at.value ? at.value.toISOString() : "";
     moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE);
@@ -94,37 +97,37 @@ async function loadFirstPage(nav = false) {
       const snaps = await fetchSnapshots(1000);
       snapshots.value = snaps.data;
     }
-  } catch (e) {
-    error.value = (e as Error).message;
-    moment.value = null;
-  } finally {
-    loading.value = false;
-  }
+    await checkLatest();
+  } catch (e) { error.value = (e as Error).message; moment.value = null; } finally { loading.value = false; }
 }
 
 async function loadMore() {
   if (loadingMore.value || !hasMore.value) return;
-  loadingMore.value = true;
-  offset += PAGE_SIZE;
+  loadingMore.value = true; offset += PAGE_SIZE;
   try {
     const atParam = at.value ? at.value.toISOString() : "";
     const page = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE);
-    if (page.streams.length === 0 || page.streams.length < PAGE_SIZE) hasMore.value = false;
+    if (page.streams.length < PAGE_SIZE) hasMore.value = false;
     allStreams.value.push(...page.streams);
   } catch (_e) { offset -= PAGE_SIZE; } finally { loadingMore.value = false; }
 }
 
+async function checkLatest() {
+  try {
+    const snaps = await fetchSnapshots(1);
+    if (snaps.data.length) latestSnapshotAt.value = snaps.data[0].taken_at;
+  } catch (_e) {}
+}
+
 function debounceLoad() {
   if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => loadFirstPage(false), 300);
+  debounceTimer = setTimeout(loadFirstPage, 300);
 }
 
 function setupObserver() {
   if (observer) observer.disconnect();
   if (!sentinel.value) return;
-  observer = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting) loadMore();
-  }, { rootMargin: "400px" });
+  observer = new IntersectionObserver((e) => { if (e[0]?.isIntersecting) loadMore(); }, { rootMargin: "400px" });
   observer.observe(sentinel.value);
 }
 
@@ -139,7 +142,18 @@ function syncURL() {
   router.replace({ query: { ...params } });
 }
 
-// Watchers for URL sync
+// Reset filters when navigating to bare "/"
+watch(() => route.fullPath, () => {
+  if (Object.keys(route.query).length === 0) {
+    at.value = new Date();
+    survivor.value = "";
+    q.value = "";
+    language.value = "";
+    sort.value = "viewers";
+    dir.value = "desc";
+  }
+});
+
 watch(at, syncURL);
 watch(survivor, syncURL);
 watch(q, syncURL);
@@ -167,8 +181,16 @@ function streamLink(stream: Stream): string {
   return `/stream/${stream.streamer_id}?${p.toString()}`;
 }
 
-onMounted(() => { loadFirstPage(false); });
-onUnmounted(() => { if (observer) observer.disconnect(); });
+onMounted(() => {
+  if (!route.query.at) syncURL();
+  loadFirstPage();
+  snapshotPollTimer = setInterval(checkLatest, 30000);
+});
+
+onUnmounted(() => {
+  if (observer) observer.disconnect();
+  if (snapshotPollTimer) clearInterval(snapshotPollTimer);
+});
 </script>
 
 <template>
@@ -189,6 +211,7 @@ onUnmounted(() => { if (observer) observer.disconnect(); });
         <div class="moment-nav">
           <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
           <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
+          <Button icon="pi pi-arrow-right" label="Now" size="small" severity="secondary" :class="{ 'now-btn': true, 'now-glow': hasNewerSnapshot }" @click="goNow" />
           <Button icon="pi pi-sliders-h" label="Filters" size="small" severity="secondary" class="filter-btn" @click="filtersVisible = true" />
         </div>
       </div>
@@ -203,21 +226,11 @@ onUnmounted(() => { if (observer) observer.disconnect(); });
     <div v-if="allStreams.length" class="gallery-grid">
       <div v-for="stream in allStreams" :key="stream.streamer_id" class="gallery-item">
         <div class="gallery-headline">
-          <a class="gallery-name" :href="streamLink(stream)" target="_blank" :title="stream.display_name">
-            {{ stream.display_name }}
-          </a>
-          <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :style="scoreColor(stream)" :title="'fuzzy match: ' + scorePct(stream)">
-            {{ scorePct(stream) }}
-          </span>
+          <a class="gallery-name" :href="streamLink(stream)" target="_blank" :title="stream.display_name">{{ stream.display_name }}</a>
+          <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :style="scoreColor(stream)" :title="'match: ' + scorePct(stream)">{{ scorePct(stream) }}</span>
         </div>
         <a class="gallery-thumb-link" :href="streamLink(stream)" target="_blank">
-          <img
-            v-if="stream.thumb_url || stream.preview_url"
-            class="gallery-thumb"
-            :src="stream.thumb_url || stream.preview_url"
-            :alt="stream.display_name"
-            loading="lazy"
-          />
+          <img v-if="stream.thumb_url || stream.preview_url" class="gallery-thumb" :src="stream.thumb_url || stream.preview_url" :alt="stream.display_name" loading="lazy" />
           <span v-else class="muted">No preview</span>
         </a>
       </div>
@@ -266,98 +279,33 @@ onUnmounted(() => { if (observer) observer.disconnect(); });
 </template>
 
 <style scoped>
-.moment-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
+.moment-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.moment-timestamp { font-size: 0.85rem; white-space: nowrap; }
+.moment-spacer { flex: 1; }
+.moment-controls { display: flex; align-items: center; gap: 0.5rem; }
+.moment-nav { display: flex; gap: 0.25rem; flex-shrink: 0; }
 
-.moment-timestamp {
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.moment-spacer {
-  flex: 1;
-}
-
-.moment-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.moment-nav {
-  display: flex;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
+.now-btn { position: relative; }
+.now-glow { box-shadow: 0 0 8px 2px var(--p-primary-color, #6366f1); }
 
 .retention-warn {
-  background: rgba(220, 38, 38, 0.12);
-  border: 1px solid rgba(220, 38, 38, 0.3);
-  border-radius: 4px;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8rem;
-  color: #fca5a5;
-  margin: 0 0 0.5rem;
+  background: rgba(220, 38, 38, 0.12); border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 4px; padding: 0.4rem 0.75rem; font-size: 0.8rem; color: #fca5a5; margin: 0 0 0.5rem;
 }
 
-.survivor-search {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: 1;
-  max-width: 380px;
-  min-width: 180px;
-}
-
+.survivor-search { position: relative; display: flex; align-items: center; gap: 0.4rem; flex: 1; max-width: 380px; min-width: 180px; }
 .survivor-input {
-  width: 100%;
-  padding: 0.35rem 2rem 0.35rem 1.8rem;
-  font-size: 0.85rem;
-  border: 1px solid var(--p-inputtext-border-color, #3a3f4b);
-  border-radius: 4px;
-  background: var(--p-inputtext-background, #11151c);
-  color: var(--p-inputtext-color, inherit);
+  width: 100%; padding: 0.35rem 2rem 0.35rem 1.8rem; font-size: 0.85rem;
+  border: 1px solid var(--p-inputtext-border-color); border-radius: 4px;
+  background: var(--p-inputtext-background); color: var(--p-inputtext-color);
 }
-
-.search-icon {
-  position: absolute;
-  left: 0.55rem;
-  font-size: 0.8rem;
-  opacity: 0.6;
-  pointer-events: none;
-}
-
+.search-icon { position: absolute; left: 0.55rem; font-size: 0.8rem; opacity: 0.6; pointer-events: none; }
 .sort-hint {
-  position: absolute;
-  right: 1.6rem;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--p-primary-color, #6366f1);
-  white-space: nowrap;
-  pointer-events: none;
+  position: absolute; right: 1.6rem; font-size: 0.65rem; text-transform: uppercase;
+  letter-spacing: 0.03em; color: var(--p-primary-color); white-space: nowrap; pointer-events: none;
 }
-
-.input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.input-clear {
-  position: absolute;
-  right: 0.5rem;
-  font-size: 0.75rem;
-  opacity: 0.5;
-  cursor: pointer;
-}
-
+.input-wrap { position: relative; display: flex; align-items: center; }
+.input-clear { position: absolute; right: 0.5rem; font-size: 0.75rem; opacity: 0.5; cursor: pointer; }
 .input-clear:hover { opacity: 0.9; }
 
 @media (max-width: 640px) {
@@ -365,70 +313,25 @@ onUnmounted(() => { if (observer) observer.disconnect(); });
   .filter-btn :deep(.p-button-label) { display: none; }
 }
 
-.gallery-headline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-}
-
-.score-badge {
-  flex: 0 0 auto;
-  font-size: 0.65rem;
-  font-weight: 700;
-  padding: 0.05rem 0.35rem;
-  border-radius: 3px;
-  color: #fff;
-}
-
 .field-hint { font-size: 0.72rem; margin: 0; }
-
 .filters-grid { display: flex; flex-direction: column; gap: 0.75rem; }
 .filters-grid .field { display: flex; flex-direction: column; gap: 0.2rem; }
-.filters-grid label {
-  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--p-text-muted-color);
-}
+.filters-grid label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--p-text-muted-color); }
 
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 0.75rem; margin-bottom: 0.5rem; }
+@media (max-width: 640px) { .gallery-grid { grid-template-columns: 1fr; } }
 
-@media (max-width: 640px) {
-  .gallery-grid { grid-template-columns: 1fr; }
-}
-
-.gallery-item {
-  display: flex; flex-direction: column; gap: 0.25rem;
-  content-visibility: auto; contain-intrinsic-size: auto 360px 100px;
-}
-
-.gallery-name {
-  font-size: 0.8rem; font-weight: 600; color: inherit;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-decoration: none; cursor: pointer;
-}
-
+.gallery-item { display: flex; flex-direction: column; gap: 0.25rem; content-visibility: auto; contain-intrinsic-size: auto 360px 100px; }
+.gallery-headline { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.gallery-name { font-size: 0.8rem; font-weight: 600; color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
 .gallery-thumb-link { display: block; }
+.gallery-thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; max-width: 1280px; border-radius: 4px; background: #000; display: block; }
 
-.gallery-thumb {
-  width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
-  max-width: 1280px; border-radius: 4px; background: #000;
-  display: block;
-}
+.score-badge { flex: 0 0 auto; font-size: 0.65rem; font-weight: 700; padding: 0.05rem 0.35rem; border-radius: 3px; color: #fff; }
 
 .loading-spinner { display: flex; justify-content: center; padding: 2rem 0; }
 .scroll-sentinel { display: flex; justify-content: center; padding: 1rem 0; min-height: 40px; }
-
-.spinner {
-  width: 32px; height: 32px;
-  border: 3px solid var(--p-surface-700, #374151);
-  border-top-color: var(--p-primary-color, #6366f1);
-  border-radius: 50%; animation: spin 0.7s linear infinite;
-}
+.spinner { width: 32px; height: 32px; border: 3px solid var(--p-surface-700); border-top-color: var(--p-primary-color); border-radius: 50%; animation: spin 0.7s linear infinite; }
 .small-spinner { width: 20px; height: 20px; border-width: 2px; }
-
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>

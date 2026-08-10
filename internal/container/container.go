@@ -89,6 +89,7 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 	pollUC := poll.New(poll.Deps{
 		Clock: clock.System(), Logger: log, Gateway: tw, Repo: repo,
 		Preview: pv, OCR: ocrSvc, Config: cfg.Poll, OCRConfig: cfg.OCR,
+		DataDir: cfg.Storage.DataDir,
 	})
 	momentsUC := moments.New(moments.Deps{Logger: log, Repo: repo})
 	pruneUC := prune.New(prune.Deps{

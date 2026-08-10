@@ -5,6 +5,7 @@ import StatsView from "./views/StatsView.vue";
 import AboutView from "./views/AboutView.vue";
 import PrivacyView from "./views/PrivacyView.vue";
 import TermsView from "./views/TermsView.vue";
+import NotFoundView from "./views/NotFoundView.vue";
 
 export default createRouter({
   history: createWebHistory(),
@@ -15,6 +16,6 @@ export default createRouter({
     { path: "/about", name: "about", component: AboutView },
     { path: "/privacy", name: "privacy", component: PrivacyView },
     { path: "/terms", name: "terms", component: TermsView },
-    { path: "/:pathMatch(.*)*", redirect: "/" },
+    { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundView },
   ],
 });

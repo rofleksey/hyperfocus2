@@ -19,6 +19,9 @@ var initSQL string
 //go:embed 0002_duration.sql
 var durationSQL string
 
+//go:embed 0003_disk.sql
+var diskSQL string
+
 // Migration is a single ordered, versioned schema change.
 type Migration struct {
 	Version int
@@ -30,6 +33,7 @@ type Migration struct {
 var All = []Migration{
 	{Version: 1, Name: "init_schema", SQL: initSQL},
 	{Version: 2, Name: "add_duration_seconds", SQL: durationSQL},
+	{Version: 3, Name: "add_disk_usage_bytes", SQL: diskSQL},
 }
 
 // Run applies any pending migrations against the pool. It is idempotent.

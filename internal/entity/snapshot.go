@@ -9,4 +9,5 @@ type Snapshot struct {
 	Source          string
 	StreamCount     int
 	DurationSeconds float64
+	DiskUsageBytes  int64
 }

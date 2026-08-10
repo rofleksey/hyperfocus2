@@ -20,6 +20,7 @@ function fmtLabel(raw: string): string {
 
 const onlineData = ref(makeEmpty());
 const durationData = ref(makeEmpty());
+const diskData = ref(makeEmpty());
 const previewData = ref(makeEmpty());
 const ocrData = ref(makeEmpty());
 
@@ -49,6 +50,7 @@ async function load() {
 
     onlineData.value = dataset(labs, "Streams online", stats.value.map(s => s.stream_count), "#6366f1", "rgba(99,102,241,0.1)");
     durationData.value = dataset(labs, "Cycle time (s)", stats.value.map(s => s.duration_seconds), "#ec4899", "rgba(236,72,153,0.1)");
+    diskData.value = dataset(labs, "Disk (MB)", stats.value.map(s => +(s.disk_usage_bytes / 1048576).toFixed(1)), "#8b5cf6", "rgba(139,92,246,0.1)");
     previewData.value = dataset(labs, "Previews (%)", stats.value.map(s => s.total > 0 ? Math.round((s.preview_ok / s.total) * 100) : 0), "#22c55e", "rgba(34,197,94,0.1)");
     ocrData.value = dataset(labs, "OCR names (%)", stats.value.map(s => s.total > 0 ? Math.round((s.ocr_ok / s.total) * 100) : 0), "#f59e0b", "rgba(245,158,11,0.1)");
   } catch (e) {
@@ -83,6 +85,11 @@ onMounted(load);
       <div class="chart-box">
         <h3>Cycle time (seconds)</h3>
         <div class="chart-wrap"><Line v-if="durationData.labels.length" :data="durationData" :options="chartOptions" /></div>
+      </div>
+
+      <div class="chart-box">
+        <h3>Disk usage (MB)</h3>
+        <div class="chart-wrap"><Line v-if="diskData.labels.length" :data="diskData" :options="chartOptions" /></div>
       </div>
 
       <div class="chart-box">

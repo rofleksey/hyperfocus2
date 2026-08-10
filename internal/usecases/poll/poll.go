@@ -6,6 +6,8 @@ package poll
 import (
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +29,7 @@ type Repository interface {
 	UpsertStreamer(ctx context.Context, s entity.Streamer) error
 	EnsureOpenSession(ctx context.Context, streamerID, twitchStreamID string, startedAt time.Time) (int64, *string, error)
 	CloseUnseenSessions(ctx context.Context, seenIDs []string, now time.Time) (int64, error)
-	InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int, durationSecs float64) (int64, error)
+	InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int, durationSecs float64, diskBytes int64) (int64, error)
 	InsertSample(ctx context.Context, s entity.StreamSample) error
 	RunInTx(ctx context.Context, f func(ctx context.Context) error) error
 }
@@ -55,6 +57,7 @@ type Deps struct {
 	OCR       OCRGateway
 	Config    config.Poll
 	OCRConfig config.OCR
+	DataDir   string
 }
 
 // Poll is the polling usecase.
@@ -67,6 +70,7 @@ type Poll struct {
 	ocr     OCRGateway
 	cfg     config.Poll
 	ocrCfg  config.OCR
+	dataDir string
 }
 
 // New builds a Poll from its dependencies.
@@ -77,6 +81,7 @@ func New(d Deps) *Poll {
 	return &Poll{
 		clock: d.Clock, log: d.Logger, gateway: d.Gateway,
 		repo: d.Repo, prev: d.Preview, ocr: d.OCR, cfg: d.Config, ocrCfg: d.OCRConfig,
+		dataDir: d.DataDir,
 	}
 }
 
@@ -206,7 +211,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		for _, r := range results {
 			seen = append(seen, r.stream.TwitchStreamID)
 		}
-		id, err := p.repo.InsertSnapshot(tctx, now, "twitch", len(streams), totalDur.Seconds())
+		id, err := p.repo.InsertSnapshot(tctx, now, "twitch", len(streams), totalDur.Seconds(), p.dirSize())
 		if err != nil {
 			return oops.Wrap(err)
 		}
@@ -520,4 +525,19 @@ func dedupStreams(in []entity.LiveStream) []entity.LiveStream {
 		out = append(out, s)
 	}
 	return out
+}
+
+func (p *Poll) dirSize() int64 {
+	if p.dataDir == "" {
+		return 0
+	}
+	var total int64
+	_ = filepath.Walk(p.dataDir, func(_ string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		total += info.Size()
+		return nil
+	})
+	return total
 }

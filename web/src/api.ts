@@ -87,6 +87,8 @@ export interface SnapshotStat {
   id: number;
   taken_at: string;
   stream_count: number;
+  duration_seconds: number;
+  disk_usage_bytes: number;
   preview_ok: number;
   ocr_ok: number;
   total: number;
