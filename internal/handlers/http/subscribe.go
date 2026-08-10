@@ -27,10 +27,11 @@ type SubscribeHandler struct {
 	botHelix   *twitch.BotHelix
 	irc        *twitch.IRCBot
 	notifyCfg  config.Notify
+	steamKey   string
 }
 
-func NewSubscribeHandler(log *slog.Logger, repo SubscribeRepo, botHelix *twitch.BotHelix, irc *twitch.IRCBot, notifyCfg config.Notify) *SubscribeHandler {
-	return &SubscribeHandler{log: log, repo: repo, botHelix: botHelix, irc: irc, notifyCfg: notifyCfg}
+func NewSubscribeHandler(log *slog.Logger, repo SubscribeRepo, botHelix *twitch.BotHelix, irc *twitch.IRCBot, notifyCfg config.Notify, steamKey string) *SubscribeHandler {
+	return &SubscribeHandler{log: log, repo: repo, botHelix: botHelix, irc: irc, notifyCfg: notifyCfg, steamKey: steamKey}
 }
 
 type subscribeRequest struct {
@@ -94,7 +95,7 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Resolve Twitch user
-	twitchUserID, displayName, err := h.botHelix.ResolveUser(r.Context(), req.TwitchLogin)
+	twitchUserID, twitchDisplayName, err := h.botHelix.ResolveUser(r.Context(), req.TwitchLogin)
 	if err != nil {
 		h.log.Warn("subscribe: resolve twitch user failed", slog.String("login", req.TwitchLogin), slog.Any("error", err))
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "twitch user not found"})
@@ -108,13 +109,36 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Resolve vanity URL to numeric ID if needed.
+	if h.steamKey != "" {
+		sc := steam.NewClient(h.steamKey, h.log)
+		resolved, err := sc.ResolveVanity(r.Context(), steamID)
+		if err == nil {
+			steamID = resolved
+		}
+	}
+
+	// Fetch current Steam persona name.
+	var steamName string
+	if h.steamKey != "" {
+		sc := steam.NewClient(h.steamKey, h.log)
+		if name, err := sc.RefreshName(r.Context(), steamID); err == nil {
+			steamName = name
+		} else {
+			h.log.Warn("subscribe: steam name fetch failed", slog.Any("error", err))
+		}
+	}
+	if steamName == "" {
+		steamName = twitchDisplayName
+	}
+
 	// Insert
 	sub := entity.NotificationSubscriber{
 		TwitchLogin:  req.TwitchLogin,
 		TwitchUserID: twitchUserID,
 		SteamURL:     req.SteamURL,
 		SteamID:      steamID,
-		SteamName:    displayName, // will be refreshed by Steam name poll
+		SteamName:    steamName,
 	}
 
 	id, err := h.repo.InsertSubscriber(r.Context(), sub, req.Names)
@@ -131,7 +155,7 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 
 	writeJSON(w, http.StatusCreated, subscribeResponse{
 		Status:    "pending",
-		SteamName: displayName,
+		SteamName: steamName,
 		Names:     req.Names,
 		Message:   "type !hyperfocussub in your Twitch chat to verify",
 	})

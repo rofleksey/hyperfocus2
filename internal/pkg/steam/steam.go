@@ -46,32 +46,45 @@ func ExtractSteamID(rawURL string) (string, error) {
 
 	path := strings.Trim(u.Path, "/")
 	parts := strings.Split(path, "/")
-	if len(parts) == 0 {
+	if len(parts) < 2 {
 		return "", oops.Errorf("invalid Steam profile URL")
 	}
 
 	switch parts[0] {
 	case "profiles":
-		if len(parts) < 2 {
-			return "", oops.Errorf("invalid Steam profiles URL")
-		}
 		return parts[1], nil
 	case "id":
-		if len(parts) < 2 {
-			return "", oops.Errorf("invalid Steam id URL")
-		}
-		return resolveVanity(u.String(), parts[1])
+		return parts[1], nil // vanity — resolved via API at refresh time
 	default:
 		return "", oops.Errorf("unrecognised Steam URL path: %s", parts[0])
 	}
 }
 
-func resolveVanity(profileURL, vanity string) (string, error) {
-	return "", oops.Errorf("vanity URL resolution requires Steam API key; use /profiles/<steamID64> format")
+func (c *Client) ResolveVanity(ctx context.Context, vanity string) (string, error) {
+	reqURL := fmt.Sprintf("https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=%s&vanityurl=%s", c.apiKey, vanity)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", oops.Wrap(err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Response struct {
+			SteamID string `json:"steamid"`
+			Success int    `json:"success"`
+		} `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", oops.Wrap(err)
+	}
+	if out.Response.Success != 1 {
+		return "", oops.Errorf("vanity not found: %s", vanity)
+	}
+	return out.Response.SteamID, nil
 }
 
-// GetPlayerSummaries fetches persona names for up to 100 SteamIDs.
-func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) ([]PlayerSummary, error) {
+func GetPlayerSummaries(ctx context.Context, apiKey string, steamIDs []string) ([]PlayerSummary, error) {
 	if len(steamIDs) == 0 {
 		return nil, nil
 	}
@@ -79,10 +92,10 @@ func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) ([]P
 		steamIDs = steamIDs[:100]
 	}
 	ids := strings.Join(steamIDs, ",")
-	reqURL := fmt.Sprintf("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=%s&steamids=%s", c.apiKey, ids)
+	reqURL := fmt.Sprintf("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=%s&steamids=%s", apiKey, ids)
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	resp, err := c.client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, oops.Wrap(err)
 	}
@@ -116,9 +129,8 @@ func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) ([]P
 	return players, nil
 }
 
-// RefreshName fetches the current persona name for a single SteamID.
 func (c *Client) RefreshName(ctx context.Context, steamID string) (string, error) {
-	players, err := c.GetPlayerSummaries(ctx, []string{steamID})
+	players, err := GetPlayerSummaries(ctx, c.apiKey, []string{steamID})
 	if err != nil {
 		return "", err
 	}
@@ -127,3 +139,8 @@ func (c *Client) RefreshName(ctx context.Context, steamID string) (string, error
 	}
 	return players[0].PersonaName, nil
 }
+
+func (c *Client) GetPlayerSummaries(ctx context.Context, steamIDs []string) ([]PlayerSummary, error) {
+	return GetPlayerSummaries(ctx, c.apiKey, steamIDs)
+}
+

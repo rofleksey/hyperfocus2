@@ -127,7 +127,7 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 			Config:    cfg.Notify,
 		})
 
-		subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify)
+		subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify, cfg.Steam.APIKey)
 
 		pollUC.AfterCycle = func(pCtx context.Context, snapshotID int64, samples []entity.StreamSample) {
 			notifyUC.ProcessSnapshot(pCtx, snapshotID, samples)
