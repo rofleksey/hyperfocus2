@@ -71,6 +71,29 @@ LIMIT $5 OFFSET $6;`, snapshotID, query, language, vod, limit, offset)
 	return scanSampleDetails(rows)
 }
 
+// FindSampleByStreamer returns a single sample for a streamer at a specific snapshot.
+func (r *Repository) FindSampleByStreamer(ctx context.Context, snapshotID int64, streamerID string) (*entity.SampleDetail, error) {
+	row := r.db(ctx).QueryRow(ctx, `
+SELECT s.snapshot_id, s.session_id, s.streamer_id, s.viewer_count, s.title, s.language,
+       s.tags, s.started_at, s.vod_offset_seconds, s.preview_filename, s.thumb_filename, s.survivor_names,
+       st.login, st.display_name, st.profile_image_url, sess.vod_id
+FROM stream_samples s
+JOIN streamers st ON st.twitch_user_id = s.streamer_id
+JOIN stream_sessions sess ON sess.id = s.session_id
+WHERE s.snapshot_id = $1 AND s.streamer_id = $2
+LIMIT 1;`, snapshotID, streamerID)
+
+	var d entity.SampleDetail
+	if err := row.Scan(
+		&d.SnapshotID, &d.SessionID, &d.StreamerID, &d.ViewerCount, &d.Title, &d.Language,
+		&d.Tags, &d.StartedAt, &d.VodOffsetSeconds, &d.PreviewFilename, &d.ThumbFilename, &d.SurvivorNames,
+		&d.Login, &d.DisplayName, &d.ProfileImageURL, &d.VodID,
+	); err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
 func scanSampleDetails(rows pgx.Rows) ([]entity.SampleDetail, error) {
 	var out []entity.SampleDetail
 	for rows.Next() {

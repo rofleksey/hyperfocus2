@@ -95,3 +95,10 @@ export interface SnapshotStat {
 export function fetchStats(n = 100): Promise<{ snapshots: SnapshotStat[] }> {
   return getJson(`/api/stats?n=${n}`);
 }
+
+export function fetchSample(streamerId: string, at?: string): Promise<Stream> {
+  const p = new URLSearchParams();
+  p.set("streamer_id", streamerId);
+  if (at) p.set("at", at);
+  return getJson<Stream>(`/api/sample?${p.toString()}`);
+}

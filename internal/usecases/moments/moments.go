@@ -22,6 +22,7 @@ type Repository interface {
 	SnapshotAtOrAfter(ctx context.Context, t time.Time) (entity.Snapshot, error)
 	FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int, offset int) ([]entity.SampleDetail, error)
 	ListSnapshots(ctx context.Context, from, to *time.Time, limit int) ([]entity.Snapshot, error)
+	FindSampleByStreamer(ctx context.Context, snapshotID int64, streamerID string) (*entity.SampleDetail, error)
 }
 
 // Params describes a "who was online" query.
@@ -144,6 +145,18 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 // Snapshots lists available moments within [from, to].
 func (s *Service) Snapshots(ctx context.Context, from, to *time.Time, limit int) ([]entity.Snapshot, error) {
 	return s.repo.ListSnapshots(ctx, from, to, limit)
+}
+
+// SampleAt finds a single stream's sample at the nearest snapshot to at.
+func (s *Service) SampleAt(ctx context.Context, streamerID string, at time.Time) (*entity.SampleDetail, error) {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	snap, err := s.repo.SnapshotAtOrBefore(ctx, at)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.FindSampleByStreamer(ctx, snap.ID, streamerID)
 }
 
 // rankBySurvivor scores each sample against the survivor query (best fuzzy

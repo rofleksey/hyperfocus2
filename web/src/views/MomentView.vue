@@ -12,10 +12,10 @@ const route = useRoute();
 const router = useRouter();
 const at = ref<Date | null>(route.query.at ? new Date(route.query.at as string) : new Date());
 const survivor = ref<string>((route.query.survivor as string) || "");
-const q = ref<string>("");
-const language = ref<string>("");
-const sort = ref<string>("viewers");
-const dir = ref<string>("desc");
+const q = ref<string>((route.query.q as string) || "");
+const language = ref<string>((route.query.language as string) || "");
+const sort = ref<string>((route.query.sort as string) || "viewers");
+const dir = ref<string>((route.query.dir as string) || "desc");
 const filtersVisible = ref(false);
 
 const survivorSearchActive = computed(() => survivor.value.trim().length > 0);
@@ -32,10 +32,16 @@ const dirOptions = [
   { label: "Ascending", value: "asc" },
 ];
 
+const RETENTION_HOURS = 6;
+const outsideRetention = computed(() => {
+  if (!at.value) return false;
+  const cutoff = new Date(Date.now() - RETENTION_HOURS * 3600 * 1000);
+  return at.value < cutoff;
+});
+
 const moment = ref<MomentResponse | null>(null);
 const allStreams = ref<Stream[]>([]);
 const loading = ref(false);
-const navigating = ref(false);
 const loadingMore = ref(false);
 const error = ref<string>("");
 const hasMore = ref(true);
@@ -51,27 +57,11 @@ const currentSnapshotIndex = computed(() => {
 const hasPrev = computed(() => currentSnapshotIndex.value > 0);
 const hasNext = computed(() => currentSnapshotIndex.value >= 0 && currentSnapshotIndex.value < snapshots.value.length - 1);
 
-const selectedStream = ref<Stream | null>(null);
-const detailVisible = ref(false);
-
 const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
 
 function fmt(date: string): string {
-  try {
-    return new Date(date).toLocaleString();
-  } catch {
-    return date;
-  }
-}
-
-function initials(name: string): string {
-  return (name || "?").trim().charAt(0).toUpperCase();
-}
-
-function openDetail(stream: Stream) {
-  selectedStream.value = stream;
-  detailVisible.value = true;
+  try { return new Date(date).toLocaleString(); } catch { return date; }
 }
 
 function goPrev() {
@@ -91,7 +81,7 @@ function goNext() {
 }
 
 async function loadFirstPage(nav = false) {
-  if (nav) navigating.value = true; else loading.value = true;
+  loading.value = true;
   error.value = "";
   offset = 0;
   hasMore.value = true;
@@ -109,7 +99,6 @@ async function loadFirstPage(nav = false) {
     moment.value = null;
   } finally {
     loading.value = false;
-    navigating.value = false;
   }
 }
 
@@ -120,15 +109,9 @@ async function loadMore() {
   try {
     const atParam = at.value ? at.value.toISOString() : "";
     const page = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE);
-    if (page.streams.length === 0 || page.streams.length < PAGE_SIZE) {
-      hasMore.value = false;
-    }
+    if (page.streams.length === 0 || page.streams.length < PAGE_SIZE) hasMore.value = false;
     allStreams.value.push(...page.streams);
-  } catch (_e) {
-    offset -= PAGE_SIZE;
-  } finally {
-    loadingMore.value = false;
-  }
+  } catch (_e) { offset -= PAGE_SIZE; } finally { loadingMore.value = false; }
 }
 
 function debounceLoad() {
@@ -140,22 +123,33 @@ function setupObserver() {
   if (observer) observer.disconnect();
   if (!sentinel.value) return;
   observer = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting) {
-      loadMore();
-    }
+    if (entries[0]?.isIntersecting) loadMore();
   }, { rootMargin: "400px" });
   observer.observe(sentinel.value);
 }
 
-watch([survivor, q, language, sort, dir], debounceLoad);
+function syncURL() {
+  const params: Record<string, string | undefined> = {};
+  if (at.value) params.at = at.value.toISOString();
+  if (survivor.value.trim()) params.survivor = survivor.value.trim();
+  if (q.value.trim()) params.q = q.value.trim();
+  if (language.value.trim()) params.language = language.value.trim();
+  if (sort.value !== "viewers") params.sort = sort.value;
+  if (dir.value !== "desc") params.dir = dir.value;
+  router.replace({ query: { ...params } });
+}
+
+// Watchers for URL sync
+watch(at, syncURL);
+watch(survivor, syncURL);
+watch(q, syncURL);
+watch(language, syncURL);
+watch(sort, syncURL);
+watch(dir, syncURL);
 watch(at, debounceLoad);
-watch(survivor, (v) => {
-  router.replace({ query: { ...route.query, survivor: v || undefined } });
-});
+watch([survivor, q, language, sort, dir], debounceLoad);
 watch(sentinel, setupObserver);
-watch(allStreams, () => {
-  setTimeout(setupObserver, 0);
-});
+watch(allStreams, () => { setTimeout(setupObserver, 0); });
 
 function scorePct(s: Stream): string {
   if (s.fuzzy_score == null) return "";
@@ -164,17 +158,17 @@ function scorePct(s: Stream): string {
 
 function scoreColor(s: Stream): Record<string, string> {
   if (s.fuzzy_score == null) return {};
-  const pct = s.fuzzy_score * 100;
-  return { background: pct >= 50 ? "#16a34a" : "#dc2626" };
+  return { background: s.fuzzy_score * 100 >= 50 ? "#16a34a" : "#dc2626" };
 }
 
-onMounted(() => {
-  loadFirstPage(false);
-});
+function streamLink(stream: Stream): string {
+  const p = new URLSearchParams();
+  if (at.value) p.set("at", at.value.toISOString());
+  return `/stream/${stream.streamer_id}?${p.toString()}`;
+}
 
-onUnmounted(() => {
-  if (observer) observer.disconnect();
-});
+onMounted(() => { loadFirstPage(false); });
+onUnmounted(() => { if (observer) observer.disconnect(); });
 </script>
 
 <template>
@@ -184,10 +178,12 @@ onUnmounted(() => {
         Online at {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
         <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
       </span>
+      <span class="moment-spacer"></span>
       <div class="moment-controls">
         <div class="survivor-search">
           <span class="pi pi-search search-icon"></span>
           <input class="survivor-input" type="text" v-model="survivor" placeholder="Search survivors…" autocomplete="off" />
+          <span v-if="survivor" class="input-clear pi pi-times" @click="survivor = ''" title="Clear"></span>
           <span v-if="survivorSearchActive" class="sort-hint">relevance</span>
         </div>
         <div class="moment-nav">
@@ -198,19 +194,23 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <p v-if="outsideRetention" class="retention-warn">
+      This time is outside the {{ RETENTION_HOURS }}-hour retention window. Data may be incomplete or missing.
+    </p>
+
     <p v-if="error" class="muted">Error: {{ error }}</p>
 
     <div v-if="allStreams.length" class="gallery-grid">
       <div v-for="stream in allStreams" :key="stream.streamer_id" class="gallery-item">
         <div class="gallery-headline">
-          <span class="gallery-name" @click="openDetail(stream)" role="button" tabindex="0">
+          <a class="gallery-name" :href="streamLink(stream)" target="_blank" :title="stream.display_name">
             {{ stream.display_name }}
-          </span>
+          </a>
           <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :style="scoreColor(stream)" :title="'fuzzy match: ' + scorePct(stream)">
             {{ scorePct(stream) }}
           </span>
         </div>
-        <a class="gallery-thumb-link" @click.prevent="openDetail(stream)" href="#">
+        <a class="gallery-thumb-link" :href="streamLink(stream)" target="_blank">
           <img
             v-if="stream.thumb_url || stream.preview_url"
             class="gallery-thumb"
@@ -239,11 +239,17 @@ onUnmounted(() => {
         </div>
         <div class="field">
           <label for="q">Streamer name</label>
-          <InputText id="q" v-model="q" placeholder="e.g. tru3" size="small" style="width:100%" />
+          <div class="input-wrap">
+            <InputText id="q" v-model="q" placeholder="e.g. tru3" size="small" style="width:100%" />
+            <span v-if="q" class="input-clear pi pi-times" @click="q = ''" title="Clear"></span>
+          </div>
         </div>
         <div class="field">
           <label for="language">Language</label>
-          <InputText id="language" v-model="language" placeholder="e.g. en" size="small" style="width:100%" />
+          <div class="input-wrap">
+            <InputText id="language" v-model="language" placeholder="e.g. en" size="small" style="width:100%" />
+            <span v-if="language" class="input-clear pi pi-times" @click="language = ''" title="Clear"></span>
+          </div>
         </div>
         <div class="field">
           <label for="sort">Sort by</label>
@@ -256,47 +262,6 @@ onUnmounted(() => {
         <p v-if="survivorSearchActive" class="muted field-hint">Sort is disabled — survivor search ranks by relevance.</p>
       </div>
     </Dialog>
-
-    <Dialog v-model:visible="detailVisible" :modal="true" :style="{ width: '95vw' }" @hide="selectedStream = null">
-      <template #header>
-        <span v-if="selectedStream">{{ selectedStream.display_name }}</span>
-      </template>
-      <div v-if="selectedStream" class="detail-content">
-        <img
-          v-if="selectedStream.preview_url"
-          class="detail-thumb"
-          :src="selectedStream.preview_url"
-          :alt="selectedStream.display_name"
-        />
-        <div class="detail-info">
-          <div class="detail-header">
-            <img v-if="selectedStream.profile_image_url" class="detail-avatar" :src="selectedStream.profile_image_url" :alt="selectedStream.display_name" />
-            <span v-else class="detail-avatar avatar-fallback">{{ initials(selectedStream.display_name) }}</span>
-            <div>
-              <h2 class="detail-name">
-                <a :href="`https://twitch.tv/${selectedStream.login}`" target="_blank" rel="noopener" class="detail-name-link">{{ selectedStream.display_name }}</a>
-              </h2>
-              <span class="muted">@{{ selectedStream.login }}</span>
-            </div>
-          </div>
-          <div class="detail-meta">
-            <div class="detail-row"><span class="label">Viewers</span><span>{{ selectedStream.viewer_count.toLocaleString() }}</span></div>
-            <div class="detail-row"><span class="label">Language</span><span>{{ selectedStream.language || '—' }}</span></div>
-            <div class="detail-row"><span class="label">Started</span><span>{{ fmt(selectedStream.started_at) }}</span></div>
-            <div class="detail-row"><span class="label">Title</span><span>{{ selectedStream.title || '—' }}</span></div>
-            <div v-if="selectedStream.tags.length" class="detail-row"><span class="label">Tags</span><span>{{ selectedStream.tags.join(', ') }}</span></div>
-          </div>
-          <div class="ocr-block">
-            <span class="ocr-label muted">Survivors (OCR · noisy)</span>
-            <pre v-if="selectedStream.survivor_names.length" class="ocr-code"><code>{{ JSON.stringify(selectedStream.survivor_names, null, 2) }}</code></pre>
-            <span v-else class="muted">—</span>
-          </div>
-          <div class="detail-links">
-            <a v-if="selectedStream.twitch_url" :href="selectedStream.twitch_url" target="_blank" rel="noopener" class="link-btn">Watch on Twitch</a>
-          </div>
-        </div>
-      </div>
-    </Dialog>
   </section>
 </template>
 
@@ -305,7 +270,7 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
 
@@ -314,17 +279,30 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.moment-spacer {
+  flex: 1;
+}
+
 .moment-controls {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
 }
 
 .moment-nav {
   display: flex;
   gap: 0.25rem;
   flex-shrink: 0;
+}
+
+.retention-warn {
+  background: rgba(220, 38, 38, 0.12);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: #fca5a5;
+  margin: 0 0 0.5rem;
 }
 
 .survivor-search {
@@ -339,7 +317,7 @@ onUnmounted(() => {
 
 .survivor-input {
   width: 100%;
-  padding: 0.35rem 0.6rem 0.35rem 1.8rem;
+  padding: 0.35rem 2rem 0.35rem 1.8rem;
   font-size: 0.85rem;
   border: 1px solid var(--p-inputtext-border-color, #3a3f4b);
   border-radius: 4px;
@@ -357,7 +335,7 @@ onUnmounted(() => {
 
 .sort-hint {
   position: absolute;
-  right: 0.5rem;
+  right: 1.6rem;
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -366,14 +344,25 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-@media (max-width: 640px) {
-  .moment-timestamp {
-    font-size: 0.75rem;
-  }
+.input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
 
-  .filter-btn :deep(.p-button-label) {
-    display: none;
-  }
+.input-clear {
+  position: absolute;
+  right: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.input-clear:hover { opacity: 0.9; }
+
+@media (max-width: 640px) {
+  .moment-timestamp { font-size: 0.75rem; }
+  .filter-btn :deep(.p-button-label) { display: none; }
 }
 
 .gallery-headline {
@@ -392,53 +381,12 @@ onUnmounted(() => {
   color: #fff;
 }
 
-.ocr-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
+.field-hint { font-size: 0.72rem; margin: 0; }
 
-.ocr-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.ocr-code {
-  margin: 0;
-  padding: 0.6rem 0.75rem;
-  background: #0b0e13;
-  border: 1px solid #232a36;
-  border-radius: 4px;
-  overflow-x: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.78rem;
-  line-height: 1.4;
-  color: #cbd5e1;
-}
-
-.field-hint {
-  font-size: 0.72rem;
-  margin: 0;
-}
-
-.filters-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.filters-grid .field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
+.filters-grid { display: flex; flex-direction: column; gap: 0.75rem; }
+.filters-grid .field { display: flex; flex-direction: column; gap: 0.2rem; }
 .filters-grid label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--p-text-muted-color);
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--p-text-muted-color);
 }
 
 .gallery-grid {
@@ -449,160 +397,38 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .gallery-grid {
-    grid-template-columns: 1fr;
-  }
+  .gallery-grid { grid-template-columns: 1fr; }
 }
 
 .gallery-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 360px 100px;
+  display: flex; flex-direction: column; gap: 0.25rem;
+  content-visibility: auto; contain-intrinsic-size: auto 360px 100px;
 }
 
 .gallery-name {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: inherit;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
+  font-size: 0.8rem; font-weight: 600; color: inherit;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-decoration: none; cursor: pointer;
 }
 
-.gallery-thumb-link {
-  display: block;
-}
+.gallery-thumb-link { display: block; }
 
 .gallery-thumb {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  max-width: 1280px;
-  border-radius: 4px;
-  background: #000;
-  display: block;
-  cursor: pointer;
-}
-
-.detail-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.detail-thumb {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: contain;
-  max-width: 1280px;
-  border-radius: 6px;
-  background: #000;
+  width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+  max-width: 1280px; border-radius: 4px; background: #000;
   display: block;
 }
 
-.detail-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.detail-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.detail-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-}
-
-.avatar-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  background: #6366f1;
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-
-.detail-name {
-  font-size: 1.1rem;
-  margin: 0;
-}
-
-.detail-name a {
-  text-decoration: none;
-  color: inherit;
-}
-
-.detail-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.detail-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.detail-row .label {
-  color: var(--p-text-muted-color, #94a3b8);
-  min-width: 80px;
-  font-size: 0.85rem;
-}
-
-.detail-links {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.link-btn {
-  padding: 0.4rem 0.8rem;
-  border: 1px solid var(--p-primary-color, #6366f1);
-  border-radius: 4px;
-  color: var(--p-primary-color, #6366f1);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-
-.loading-spinner {
-  display: flex;
-  justify-content: center;
-  padding: 2rem 0;
-}
-
-.scroll-sentinel {
-  display: flex;
-  justify-content: center;
-  padding: 1rem 0;
-  min-height: 40px;
-}
+.loading-spinner { display: flex; justify-content: center; padding: 2rem 0; }
+.scroll-sentinel { display: flex; justify-content: center; padding: 1rem 0; min-height: 40px; }
 
 .spinner {
-  width: 32px;
-  height: 32px;
+  width: 32px; height: 32px;
   border: 3px solid var(--p-surface-700, #374151);
   border-top-color: var(--p-primary-color, #6366f1);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  border-radius: 50%; animation: spin 0.7s linear infinite;
 }
+.small-spinner { width: 20px; height: 20px; border-width: 2px; }
 
-.small-spinner {
-  width: 20px;
-  height: 20px;
-  border-width: 2px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
