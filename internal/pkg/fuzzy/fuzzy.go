@@ -268,6 +268,10 @@ func targetsFor(cn, cc string) []string {
 	return out
 }
 
+// Norm normalises a string for fuzzy comparison: lowercase, runs of non-alphanum
+// collapsed to a single space.
+func Norm(s string) string { return norm(s) }
+
 // norm lowercases s and collapses every run of non-alphanumeric runes into a
 // single space. Letters and digits are preserved (Latin + Cyrillic + others).
 func norm(s string) string {

@@ -64,8 +64,8 @@ const currentSnapshotIndex = computed(() => {
   if (!moment.value?.snapshot) return -1;
   return snapshots.value.findIndex(s => s.id === moment.value!.snapshot!.id);
 });
-const hasPrev = computed(() => currentSnapshotIndex.value > 0);
-const hasNext = computed(() => currentSnapshotIndex.value >= 0 && currentSnapshotIndex.value < snapshots.value.length - 1);
+const hasPrev = computed(() => currentSnapshotIndex.value >= 0 && currentSnapshotIndex.value < snapshots.value.length - 1);
+const hasNext = computed(() => currentSnapshotIndex.value > 0);
 
 const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
@@ -82,12 +82,12 @@ function goNow() {
 
 function goPrev() {
   const idx = currentSnapshotIndex.value;
-  if (idx > 0) { at.value = new Date(snapshots.value[idx - 1].taken_at); }
+  if (idx >= 0 && idx < snapshots.value.length - 1) { at.value = new Date(snapshots.value[idx + 1].taken_at); }
 }
 
 function goNext() {
   const idx = currentSnapshotIndex.value;
-  if (idx >= 0 && idx < snapshots.value.length - 1) { at.value = new Date(snapshots.value[idx + 1].taken_at); }
+  if (idx > 0) { at.value = new Date(snapshots.value[idx - 1].taken_at); }
 }
 
 async function loadFirstPage() {

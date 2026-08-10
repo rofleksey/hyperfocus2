@@ -6,6 +6,7 @@ package http
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"hyperfocus/internal/entity"
@@ -37,6 +38,7 @@ type Deps struct {
 	Previews  PreviewServer
 	StatsRepo StatsRepo
 	Version   string
+	Subscribe *SubscribeHandler
 }
 
 // API groups handlers over shared dependencies.
@@ -47,11 +49,16 @@ type API struct {
 	previews  PreviewServer
 	statsRepo StatsRepo
 	version   string
+	subscribe *SubscribeHandler
 }
 
 // NewAPI builds an API from deps.
 func NewAPI(d Deps) *API {
-	return &API{log: d.Logger, moments: d.Moments, streamers: d.Streamers, previews: d.Previews, statsRepo: d.StatsRepo, version: d.Version}
+	return &API{log: d.Logger, moments: d.Moments, streamers: d.Streamers, previews: d.Previews, statsRepo: d.StatsRepo, version: d.Version, subscribe: d.Subscribe}
+}
+
+func (a *API) Subscribe(w http.ResponseWriter, r *http.Request) {
+	a.subscribe.HandleSubscribe(w, r)
 }
 
 // snapshotDTO is the JSON shape for a snapshot.

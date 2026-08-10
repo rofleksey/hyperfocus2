@@ -14,14 +14,17 @@ import (
 
 // Config is the root configuration object.
 type Config struct {
-	Service Service `yaml:"service"`
-	DB      DB      `yaml:"db"`
-	Twitch  Twitch  `yaml:"twitch"`
-	Poll    Poll    `yaml:"poll"`
-	Prune   Prune   `yaml:"prune"`
-	Storage Storage `yaml:"storage"`
-	OCR     OCR     `yaml:"ocr"`
-	Log     Log     `yaml:"log"`
+	Service   Service   `yaml:"service"`
+	DB        DB        `yaml:"db"`
+	Twitch    Twitch    `yaml:"twitch"`
+	TwitchBot TwitchBot `yaml:"twitch_bot"`
+	Poll      Poll      `yaml:"poll"`
+	Prune     Prune     `yaml:"prune"`
+	Storage   Storage   `yaml:"storage"`
+	OCR       OCR       `yaml:"ocr"`
+	Notify    Notify    `yaml:"notify"`
+	Steam     Steam     `yaml:"steam"`
+	Log       Log       `yaml:"log"`
 }
 
 type Service struct {
@@ -85,6 +88,35 @@ type OCR struct {
 // IsEnabled reports whether OCR is enabled, defaulting to true when the field is
 // unset.
 func (o OCR) IsEnabled() bool { return o.Enabled == nil || *o.Enabled }
+
+type Notify struct {
+	Enabled  *bool    `yaml:"enabled"`
+	MinScore float64  `yaml:"min_score"`
+	Cooldown Duration `yaml:"cooldown"`
+}
+
+func (n Notify) IsEnabled() bool { return n.Enabled == nil || *n.Enabled }
+
+type TwitchBot struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	RefreshToken string `yaml:"refresh_token"`
+}
+
+func (t TwitchBot) ClientIDor(parent string) string {
+	if t.ClientID != "" { return t.ClientID }
+	return parent
+}
+
+func (t TwitchBot) ClientSecretOr(parent string) string {
+	if t.ClientSecret != "" { return t.ClientSecret }
+	return parent
+}
+
+type Steam struct {
+	APIKey       string   `yaml:"api_key"`
+	RefreshEvery Duration `yaml:"refresh_every"`
+}
 
 type Log struct {
 	Level  string `yaml:"level"`
@@ -183,6 +215,21 @@ func applyDefaults(c *Config) {
 
 	setStr(&c.Log.Level, "info")
 	setStr(&c.Log.Format, "console")
+
+	if c.Notify.Enabled == nil {
+		f := false
+		c.Notify.Enabled = &f
+	}
+	if c.Notify.MinScore == 0 {
+		c.Notify.MinScore = 0.60
+	}
+	if c.Notify.Cooldown == 0 {
+		c.Notify.Cooldown = Duration(30 * time.Minute)
+	}
+
+	if c.Steam.RefreshEvery == 0 {
+		c.Steam.RefreshEvery = Duration(30 * time.Minute)
+	}
 }
 
 // DSN builds a PostgreSQL connection string.

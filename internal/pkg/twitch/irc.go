@@ -1,0 +1,161 @@
+package twitch
+
+import (
+	"context"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gempir/go-twitch-irc/v4"
+)
+
+type IRCCommand struct {
+	SenderLogin string
+	Channel     string
+	Command     string // !hyperfocussub | !hyperfocusunsub
+}
+
+type IRCBot struct {
+	client   *twitch.Client
+	log      *slog.Logger
+	nick     string
+	tokenFn  func() string
+	commands chan IRCCommand
+
+	mu     sync.Mutex
+	joined map[string]bool
+}
+
+func NewIRCBot(log *slog.Logger, nick string, tokenFn func() string, commands chan IRCCommand) *IRCBot {
+	return &IRCBot{
+		log:      log,
+		nick:     nick,
+		tokenFn:  tokenFn,
+		commands: commands,
+		joined:   make(map[string]bool),
+	}
+}
+
+func (b *IRCBot) Run(ctx context.Context) {
+	b.log.Info("irc: starting read loop")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		b.runOnce(ctx)
+	}
+}
+
+func (b *IRCBot) runOnce(ctx context.Context) {
+	oauth := "oauth:" + b.tokenFn()
+	b.mu.Lock()
+	c := twitch.NewClient(b.nick, oauth)
+	c.OnPrivateMessage(func(msg twitch.PrivateMessage) {
+		b.handleMessage(msg)
+	})
+	b.client = c
+	chs := make([]string, 0, len(b.joined))
+	for ch := range b.joined {
+		if b.joined[ch] {
+			chs = append(chs, ch)
+		}
+	}
+	b.mu.Unlock()
+
+	// We need to join channels AFTER Connect starts in a goroutine.
+	// The library handles initial joins via Join() called before/after Connect.
+	// Since Connect blocks, we need a goroutine.
+	ready := make(chan struct{})
+	go func() {
+		// Small delay to let the connection establish
+		time.Sleep(2 * time.Second)
+		close(ready)
+	}()
+
+	go func() {
+		<-ready
+		b.mu.Lock()
+		for _, ch := range chs {
+			c.Join(ch)
+		}
+		b.mu.Unlock()
+	}()
+
+	b.log.Info("irc: connecting")
+	if err := c.Connect(); err != nil {
+		b.log.Warn("irc: connection ended", slog.Any("error", err))
+	}
+	b.log.Info("irc: disconnected, will reconnect")
+	time.Sleep(10 * time.Second)
+}
+
+func (b *IRCBot) Join(channels ...string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.client == nil {
+		for _, ch := range channels {
+			ch = strings.ToLower(strings.TrimSpace(ch))
+			b.joined[ch] = true
+		}
+		return
+	}
+	for _, ch := range channels {
+		ch = strings.ToLower(strings.TrimSpace(ch))
+		if b.joined[ch] {
+			continue
+		}
+		b.client.Join(ch)
+		b.joined[ch] = true
+		b.log.Info("irc: joined", slog.String("channel", ch))
+	}
+}
+
+func (b *IRCBot) Part(channel string) {
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	b.mu.Lock()
+	if !b.joined[channel] {
+		b.mu.Unlock()
+		return
+	}
+	b.joined[channel] = false
+	if b.client != nil {
+		b.client.Depart(channel)
+	}
+	b.mu.Unlock()
+	b.log.Info("irc: parted", slog.String("channel", channel))
+}
+
+func (b *IRCBot) Send(channel, message string) {
+	b.mu.Lock()
+	c := b.client
+	b.mu.Unlock()
+	if c != nil {
+		c.Say(channel, message)
+	}
+}
+
+func (b *IRCBot) handleMessage(msg twitch.PrivateMessage) {
+	sender := strings.ToLower(msg.User.Name)
+	channel := strings.ToLower(msg.Channel)
+
+	if sender != channel {
+		return
+	}
+
+	text := strings.TrimSpace(msg.Message)
+	switch text {
+	case "!hyperfocussub":
+		select {
+		case b.commands <- IRCCommand{SenderLogin: sender, Channel: channel, Command: "!hyperfocussub"}:
+		default:
+		}
+	case "!hyperfocusunsub":
+		select {
+		case b.commands <- IRCCommand{SenderLogin: sender, Channel: channel, Command: "!hyperfocusunsub"}:
+		default:
+		}
+	}
+}

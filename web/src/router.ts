@@ -5,6 +5,7 @@ import StatsView from "./views/StatsView.vue";
 import AboutView from "./views/AboutView.vue";
 import PrivacyView from "./views/PrivacyView.vue";
 import TermsView from "./views/TermsView.vue";
+import SubscribeView from "./views/SubscribeView.vue";
 import NotFoundView from "./views/NotFoundView.vue";
 
 export default createRouter({
@@ -13,6 +14,7 @@ export default createRouter({
     { path: "/", name: "moment", component: MomentView },
     { path: "/stream/:streamer_id", name: "stream-detail", component: StreamDetailView, props: true },
     { path: "/stats", name: "stats", component: StatsView },
+    { path: "/subscribe", name: "subscribe", component: SubscribeView },
     { path: "/about", name: "about", component: AboutView },
     { path: "/privacy", name: "privacy", component: PrivacyView },
     { path: "/terms", name: "terms", component: TermsView },

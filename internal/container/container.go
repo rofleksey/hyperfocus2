@@ -9,20 +9,25 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/samber/do"
 	"github.com/samber/oops"
 
 	"hyperfocus/internal/client/twitch"
 	"hyperfocus/internal/config"
+	"hyperfocus/internal/entity"
 	httpHandlers "hyperfocus/internal/handlers/http"
 	"hyperfocus/internal/migrations"
 	"hyperfocus/internal/ocr"
 	"hyperfocus/internal/pkg/clock"
+	"hyperfocus/internal/pkg/steam"
+	nottwitch "hyperfocus/internal/pkg/twitch"
 	"hyperfocus/internal/previews"
 	"hyperfocus/internal/repository/postgres"
 	"hyperfocus/internal/server"
 	"hyperfocus/internal/usecases/moments"
+	"hyperfocus/internal/usecases/notify"
 	"hyperfocus/internal/usecases/poll"
 	"hyperfocus/internal/usecases/prune"
 )
@@ -39,9 +44,7 @@ type App struct {
 	repo   *postgres.Repository
 }
 
-// Build constructs the application: infra providers are registered in the DI
-// container, migrations are applied, usecases are assembled and background
-// loops are started under a derived context.
+// Build constructs the application.
 func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, error) {
 	inj := do.New()
 	do.ProvideValue(inj, ctx)
@@ -74,7 +77,7 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 
 	tw, err := do.Invoke[*twitch.Client](inj)
 	if err != nil {
-		return nil, oops.Wrapf(err, "failed to initialize Twitch client (check twitch.client_id / twitch.client_secret)")
+		return nil, oops.Wrapf(err, "failed to initialize Twitch client")
 	}
 	pv, err := do.Invoke[*previews.Store](inj)
 	if err != nil {
@@ -96,12 +99,67 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		Clock: clock.System(), Logger: log, Repo: repo, Preview: pv, Config: cfg.Prune,
 	})
 
+	ircCommands := make(chan nottwitch.IRCCommand, 32)
+	var subHandler *httpHandlers.SubscribeHandler
+	var steamClient *steam.Client
+
 	bgCtx, cancel := context.WithCancel(ctx)
-	var bg sync.WaitGroup
-	bg.Add(3)
-	go func() { defer bg.Done(); pollUC.Run(bgCtx) }()
-	go func() { defer bg.Done(); pruneUC.Run(bgCtx) }()
-	go func() { defer bg.Done(); tw.RunRefreshLoop(bgCtx) }()
+	bg := new(sync.WaitGroup)
+
+	if cfg.Notify.IsEnabled() {
+		botHelix, err := nottwitch.NewBotHelix(nottwitch.BotConfig{
+			ClientID:     cfg.TwitchBot.ClientIDor(cfg.Twitch.ClientID),
+			ClientSecret: cfg.TwitchBot.ClientSecretOr(cfg.Twitch.ClientSecret),
+			RefreshToken: cfg.TwitchBot.RefreshToken,
+		}, log)
+		if err != nil {
+			cancel()
+			return nil, oops.Wrapf(err, "twitch bot init")
+		}
+
+		ircBot := nottwitch.NewIRCBot(log, cfg.TwitchBot.ClientIDor(cfg.Twitch.ClientID), botHelix.UserAccessToken, ircCommands)
+
+		notifyUC := notify.New(notify.Deps{
+			Logger:    log,
+			Repo:      repo,
+			IRC:       ircBot,
+			BotUserID: botHelix.BotUserID(),
+			Config:    cfg.Notify,
+		})
+
+		subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify)
+
+		pollUC.AfterCycle = func(pCtx context.Context, snapshotID int64, samples []entity.StreamSample) {
+			notifyUC.ProcessSnapshot(pCtx, snapshotID, samples)
+		}
+
+		if cfg.Steam.APIKey != "" {
+			steamClient = steam.NewClient(cfg.Steam.APIKey, log)
+		}
+
+		channels, _ := repo.ActiveSubscriberChannels(ctx)
+		ircBot.Join(channels...)
+
+		bg.Add(8)
+		go func() { defer bg.Done(); pollUC.Run(bgCtx) }()
+		go func() { defer bg.Done(); pruneUC.Run(bgCtx) }()
+		go func() { defer bg.Done(); tw.RunRefreshLoop(bgCtx) }()
+		go func() { defer bg.Done(); botHelix.RefreshLoop(bgCtx) }()
+		go func() { defer bg.Done(); ircCommandLoop(bgCtx, ircCommands, subHandler) }()
+		go func() { defer bg.Done(); ircBot.Run(bgCtx) }()
+		go func() { defer bg.Done(); channelRefreshLoop(bgCtx, ircBot, repo) }()
+		go func() { defer bg.Done(); cleanupLoop(bgCtx, repo, log) }()
+
+		if steamClient != nil {
+			bg.Add(1)
+			go func() { defer bg.Done(); steamRefreshLoop(bgCtx, steamClient, repo, cfg.Steam.RefreshEvery.Std(), log) }()
+		}
+	} else {
+		bg.Add(3)
+		go func() { defer bg.Done(); pollUC.Run(bgCtx) }()
+		go func() { defer bg.Done(); pruneUC.Run(bgCtx) }()
+		go func() { defer bg.Done(); tw.RunRefreshLoop(bgCtx) }()
+	}
 
 	srv := server.New(log, httpHandlers.Deps{
 		Logger:    log,
@@ -110,13 +168,14 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		Previews:  pv,
 		StatsRepo: repo,
 		Version:   Version,
+		Subscribe: subHandler,
 	}, server.Config{Addr: cfg.Service.HTTPAddr, Version: Version})
 
 	return &App{
 		Server: srv,
 		inj:    inj,
 		cancel: cancel,
-		bg:     &bg,
+		bg:     bg,
 		repo:   repo,
 	}, nil
 }
@@ -127,4 +186,98 @@ func (a *App) Shutdown() {
 	a.bg.Wait()
 	a.repo.Close()
 	_ = a.inj.Shutdown()
+}
+
+func ircCommandLoop(ctx context.Context, commands <-chan nottwitch.IRCCommand, h *httpHandlers.SubscribeHandler) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case cmd := <-commands:
+			h.HandleIRCCommand(ctx, cmd)
+		}
+	}
+}
+
+func channelRefreshLoop(ctx context.Context, irc *nottwitch.IRCBot, repo interface{ ActiveSubscriberChannels(context.Context) ([]string, error) }) {
+	t := time.NewTicker(5 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			chs, err := repo.ActiveSubscriberChannels(ctx)
+			if err == nil {
+				irc.Join(chs...)
+			}
+		}
+	}
+}
+
+func cleanupLoop(ctx context.Context, repo interface{ DeletePendingExpired(context.Context) (int64, error) }, log *slog.Logger) {
+	t := time.NewTicker(1 * time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := repo.DeletePendingExpired(ctx)
+			if err == nil && n > 0 {
+				log.Info("notify: cleared expired pending subscriptions", slog.Int64("count", n))
+			}
+		}
+	}
+}
+
+func steamRefreshLoop(ctx context.Context, client *steam.Client, repo interface {
+	ActiveSubscribersWithNames(context.Context) ([]entity.NotificationSubscriber, error)
+	UpdateSteamName(context.Context, int64, string) error
+}, every time.Duration, log *slog.Logger) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			subs, err := repo.ActiveSubscribersWithNames(ctx)
+			if err != nil {
+				log.Warn("steam: refresh failed to load subscribers", slog.Any("error", err))
+				continue
+			}
+			ids := make([]string, 0, len(subs))
+			for _, s := range subs {
+				ids = append(ids, s.SteamID)
+			}
+
+			// Batch up to 100 IDs per call.
+			for len(ids) > 0 {
+				batch := ids
+				if len(batch) > 100 {
+					batch = batch[:100]
+				}
+				ids = ids[len(batch):]
+
+				summaries, err := client.GetPlayerSummaries(ctx, batch)
+				if err != nil {
+					log.Warn("steam: refresh api call failed", slog.Any("error", err))
+					continue
+				}
+				for _, sum := range summaries {
+					// Find subscriber by steam_id and update
+					for _, s := range subs {
+						if s.SteamID == sum.SteamID && s.SteamName != sum.PersonaName {
+							if err := repo.UpdateSteamName(ctx, s.ID, sum.PersonaName); err != nil {
+								log.Warn("steam: update name failed", slog.Any("error", err))
+							} else {
+								log.Info("steam: name updated", slog.String("from", s.SteamName), slog.String("to", sum.PersonaName))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }

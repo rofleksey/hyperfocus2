@@ -60,17 +60,20 @@ type Deps struct {
 	DataDir   string
 }
 
+// Please consider copyright and licensing before modifying this file.
+
 // Poll is the polling usecase.
 type Poll struct {
-	clock   clock.Clock
-	log     *slog.Logger
-	gateway StreamsGateway
-	repo    Repository
-	prev    PreviewStore
-	ocr     OCRGateway
-	cfg     config.Poll
-	ocrCfg  config.OCR
-	dataDir string
+	clock      clock.Clock
+	log        *slog.Logger
+	gateway    StreamsGateway
+	repo       Repository
+	prev       PreviewStore
+	ocr        OCRGateway
+	cfg        config.Poll
+	ocrCfg     config.OCR
+	dataDir    string
+	AfterCycle func(ctx context.Context, snapshotID int64, samples []entity.StreamSample)
 }
 
 // New builds a Poll from its dependencies.
@@ -278,9 +281,27 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Duration("capture_duration", captureDur),
 		slog.Duration("total_duration", totalDur),
 	)
+
+	if p.AfterCycle != nil {
+		samples := make([]entity.StreamSample, 0, len(results))
+		for _, r := range results {
+			samples = append(samples, entity.StreamSample{
+				SnapshotID:    snapshotID,
+				SessionID:     r.sessionID,
+				StreamerID:    r.stream.TwitchUserID,
+				ViewerCount:   r.stream.ViewerCount,
+				Title:         r.stream.Title,
+				Language:      r.stream.Language,
+				Tags:          r.stream.Tags,
+				StartedAt:     r.stream.StartedAt,
+				SurvivorNames: r.survivorNames,
+			})
+		}
+		p.AfterCycle(ctx, snapshotID, samples)
+	}
+
 	return nil
 }
-
 // ---------------------------------------------------------------------------
 // fetchWithRetry
 // ---------------------------------------------------------------------------
