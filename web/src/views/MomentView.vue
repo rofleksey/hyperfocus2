@@ -50,9 +50,10 @@ let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const snapshots = ref<Snapshot[]>([]);
 const latestSnapshotAt = ref<string>("");
+const lastSeenLatestAt = ref<string>("");
 const hasNewerSnapshot = computed(() => {
-  if (!moment.value?.snapshot?.taken_at || !latestSnapshotAt.value) return false;
-  return latestSnapshotAt.value > moment.value.snapshot.taken_at;
+  if (!lastSeenLatestAt.value || !latestSnapshotAt.value) return false;
+  return latestSnapshotAt.value > lastSeenLatestAt.value;
 });
 
 let snapshotPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -83,6 +84,7 @@ function goNext() {
 
 function goNow() {
   at.value = new Date();
+  lastSeenLatestAt.value = latestSnapshotAt.value;
   loadFirstPage();
 }
 
@@ -115,7 +117,11 @@ async function loadMore() {
 async function checkLatest() {
   try {
     const snaps = await fetchSnapshots(1);
-    if (snaps.data.length) latestSnapshotAt.value = snaps.data[0].taken_at;
+    if (snaps.data.length) {
+      const latest = snaps.data[0].taken_at;
+      if (!lastSeenLatestAt.value) lastSeenLatestAt.value = latest;
+      latestSnapshotAt.value = latest;
+    }
   } catch (_e) {}
 }
 

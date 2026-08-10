@@ -110,11 +110,12 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 	res.Snapshot = snap
 	res.HasData = true
 
-	// For survivor search the SQL layer must return all rows so ranking is
-	// correct — pagination (limit/offset) is applied in Go after ranking.
+	// When any filter is active, return all matching rows so the user sees
+	// the complete result set (filtered sets are typically small). Pagination
+	// (limit/offset) only applies to unfiltered browsing.
 	findLimit := p.Limit
 	findOffset := p.Offset
-	if p.Survivor != "" {
+	if p.Survivor != "" || p.Query != "" || p.Language != "" {
 		findLimit = 0
 		findOffset = 0
 	}
