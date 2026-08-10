@@ -19,16 +19,16 @@ func (r *Repository) SnapshotStats(ctx context.Context, n int) ([]entity.Snapsho
 		n = 500
 	}
 	rows, err := r.db(ctx).Query(ctx, `
-SELECT s.id, s.taken_at, s.stream_count,
+SELECT s.id, s.taken_at, s.stream_count, s.duration_seconds,
        COUNT(ss.snapshot_id) FILTER (WHERE ss.preview_filename IS NOT NULL) AS previews_ok,
        COUNT(ss.snapshot_id) FILTER (WHERE cardinality(ss.survivor_names) > 0) AS ocr_ok,
        COUNT(ss.snapshot_id) AS total
 FROM (
-  SELECT id, taken_at, stream_count FROM snapshots
+  SELECT id, taken_at, stream_count, duration_seconds FROM snapshots
   ORDER BY taken_at DESC LIMIT $1
 ) s
 LEFT JOIN stream_samples ss ON ss.snapshot_id = s.id
-GROUP BY s.id, s.taken_at, s.stream_count
+GROUP BY s.id, s.taken_at, s.stream_count, s.duration_seconds
 ORDER BY s.taken_at ASC;`, n)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ ORDER BY s.taken_at ASC;`, n)
 	var out []entity.SnapshotStat
 	for rows.Next() {
 		var st entity.SnapshotStat
-		if err := rows.Scan(&st.ID, &st.TakenAt, &st.StreamCount, &st.PreviewOK, &st.OCROK, &st.Total); err != nil {
+		if err := rows.Scan(&st.ID, &st.TakenAt, &st.StreamCount, &st.DurationSeconds, &st.PreviewOK, &st.OCROK, &st.Total); err != nil {
 			return nil, err
 		}
 		out = append(out, st)
@@ -46,21 +46,21 @@ ORDER BY s.taken_at ASC;`, n)
 }
 
 // InsertSnapshot creates a snapshot row and returns its id.
-func (r *Repository) InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int) (int64, error) {
+func (r *Repository) InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int, durationSecs float64) (int64, error) {
 	var id int64
 	err := r.db(ctx).QueryRow(ctx, `
-INSERT INTO snapshots (taken_at, source, stream_count) VALUES ($1, $2, $3) RETURNING id;`,
-		takenAt, source, count).Scan(&id)
+INSERT INTO snapshots (taken_at, source, stream_count, duration_seconds) VALUES ($1, $2, $3, $4) RETURNING id;`,
+		takenAt, source, count, durationSecs).Scan(&id)
 	return id, err
 }
 
 // SnapshotAtOrBefore returns the most recent snapshot at or before t.
 func (r *Repository) SnapshotAtOrBefore(ctx context.Context, t time.Time) (entity.Snapshot, error) {
 	row := r.db(ctx).QueryRow(ctx, `
-SELECT id, taken_at, source, stream_count FROM snapshots
+SELECT id, taken_at, source, stream_count, duration_seconds FROM snapshots
 WHERE taken_at <= $1 ORDER BY taken_at DESC LIMIT 1;`, t)
 	var s entity.Snapshot
-	if err := row.Scan(&s.ID, &s.TakenAt, &s.Source, &s.StreamCount); err != nil {
+	if err := row.Scan(&s.ID, &s.TakenAt, &s.Source, &s.StreamCount, &s.DurationSeconds); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entity.Snapshot{}, ErrNotFound
 		}
@@ -72,10 +72,10 @@ WHERE taken_at <= $1 ORDER BY taken_at DESC LIMIT 1;`, t)
 // SnapshotAtOrAfter returns the earliest snapshot at or after t.
 func (r *Repository) SnapshotAtOrAfter(ctx context.Context, t time.Time) (entity.Snapshot, error) {
 	row := r.db(ctx).QueryRow(ctx, `
-SELECT id, taken_at, source, stream_count FROM snapshots
+SELECT id, taken_at, source, stream_count, duration_seconds FROM snapshots
 WHERE taken_at >= $1 ORDER BY taken_at ASC LIMIT 1;`, t)
 	var s entity.Snapshot
-	if err := row.Scan(&s.ID, &s.TakenAt, &s.Source, &s.StreamCount); err != nil {
+	if err := row.Scan(&s.ID, &s.TakenAt, &s.Source, &s.StreamCount, &s.DurationSeconds); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return entity.Snapshot{}, ErrNotFound
 		}
@@ -90,7 +90,7 @@ func (r *Repository) ListSnapshots(ctx context.Context, from, to *time.Time, lim
 		limit = 100
 	}
 	rows, err := r.db(ctx).Query(ctx, `
-SELECT id, taken_at, source, stream_count FROM snapshots
+SELECT id, taken_at, source, stream_count, duration_seconds FROM snapshots
 WHERE ($1::timestamptz IS NULL OR taken_at >= $1)
   AND ($2::timestamptz IS NULL OR taken_at <= $2)
 ORDER BY taken_at DESC LIMIT $3;`, from, to, limit)
@@ -101,7 +101,7 @@ ORDER BY taken_at DESC LIMIT $3;`, from, to, limit)
 	var out []entity.Snapshot
 	for rows.Next() {
 		var s entity.Snapshot
-		if err := rows.Scan(&s.ID, &s.TakenAt, &s.Source, &s.StreamCount); err != nil {
+		if err := rows.Scan(&s.ID, &s.TakenAt, &s.Source, &s.StreamCount, &s.DurationSeconds); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

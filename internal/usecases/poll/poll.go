@@ -27,7 +27,7 @@ type Repository interface {
 	UpsertStreamer(ctx context.Context, s entity.Streamer) error
 	EnsureOpenSession(ctx context.Context, streamerID, twitchStreamID string, startedAt time.Time) (int64, *string, error)
 	CloseUnseenSessions(ctx context.Context, seenIDs []string, now time.Time) (int64, error)
-	InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int) (int64, error)
+	InsertSnapshot(ctx context.Context, takenAt time.Time, source string, count int, durationSecs float64) (int64, error)
 	InsertSample(ctx context.Context, s entity.StreamSample) error
 	RunInTx(ctx context.Context, f func(ctx context.Context) error) error
 }
@@ -200,12 +200,13 @@ func (p *Poll) doPoll(ctx context.Context) error {
 	// -----------------------------------------------------------------------
 	// Phase 4 — second DB tx: snapshot + close unseen.
 	// -----------------------------------------------------------------------
+	totalDur := time.Since(started)
 	seen := make([]string, 0, len(streams))
 	if err := p.repo.RunInTx(ctx, func(tctx context.Context) error {
 		for _, r := range results {
 			seen = append(seen, r.stream.TwitchStreamID)
 		}
-		id, err := p.repo.InsertSnapshot(tctx, now, "twitch", len(streams))
+		id, err := p.repo.InsertSnapshot(tctx, now, "twitch", len(streams), totalDur.Seconds())
 		if err != nil {
 			return oops.Wrap(err)
 		}
@@ -258,7 +259,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		return err
 	}
 
-	totalDur := time.Since(started)
+	totalDur = time.Since(started)
 
 	p.log.Info("poll cycle complete",
 		slog.Int("streams", len(streams)),

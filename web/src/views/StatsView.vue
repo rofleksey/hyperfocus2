@@ -18,22 +18,14 @@ function fmtLabel(raw: string): string {
   }
 }
 
-const labels = ref<string[]>([]);
+const onlineData = ref(makeEmpty());
+const durationData = ref(makeEmpty());
+const previewData = ref(makeEmpty());
+const ocrData = ref(makeEmpty());
 
-const onlineData = ref<{ labels: string[]; datasets: { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] }>({
-  labels: [],
-  datasets: [],
-});
-
-const previewData = ref<{ labels: string[]; datasets: { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] }>({
-  labels: [],
-  datasets: [],
-});
-
-const ocrData = ref<{ labels: string[]; datasets: { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] }>({
-  labels: [],
-  datasets: [],
-});
+function makeEmpty() {
+  return { labels: [], datasets: [] as { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] };
+}
 
 const chartOptions = {
   responsive: true,
@@ -54,42 +46,23 @@ async function load() {
     if (!stats.value.length) return;
 
     const labs = stats.value.map(s => fmtLabel(s.taken_at));
-    labels.value = labs;
 
-    onlineData.value = {
-      labels: labs,
-      datasets: [{
-        label: "Streams online",
-        data: stats.value.map(s => s.stream_count),
-        borderColor: "#6366f1", backgroundColor: "rgba(99,102,241,0.1)",
-        fill: true, tension: 0.3, pointRadius: 0,
-      }],
-    };
-
-    previewData.value = {
-      labels: labs,
-      datasets: [{
-        label: "Previews captured (%)",
-        data: stats.value.map(s => s.total > 0 ? Math.round((s.preview_ok / s.total) * 100) : 0),
-        borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.1)",
-        fill: true, tension: 0.3, pointRadius: 0,
-      }],
-    };
-
-    ocrData.value = {
-      labels: labs,
-      datasets: [{
-        label: "OCR names found (%)",
-        data: stats.value.map(s => s.total > 0 ? Math.round((s.ocr_ok / s.total) * 100) : 0),
-        borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.1)",
-        fill: true, tension: 0.3, pointRadius: 0,
-      }],
-    };
+    onlineData.value = dataset(labs, "Streams online", stats.value.map(s => s.stream_count), "#6366f1", "rgba(99,102,241,0.1)");
+    durationData.value = dataset(labs, "Cycle time (s)", stats.value.map(s => s.duration_seconds), "#ec4899", "rgba(236,72,153,0.1)");
+    previewData.value = dataset(labs, "Previews (%)", stats.value.map(s => s.total > 0 ? Math.round((s.preview_ok / s.total) * 100) : 0), "#22c55e", "rgba(34,197,94,0.1)");
+    ocrData.value = dataset(labs, "OCR names (%)", stats.value.map(s => s.total > 0 ? Math.round((s.ocr_ok / s.total) * 100) : 0), "#f59e0b", "rgba(245,158,11,0.1)");
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
     loading.value = false;
   }
+}
+
+function dataset(labels: string[], label: string, data: number[], border: string, bg: string) {
+  return {
+    labels,
+    datasets: [{ label, data, borderColor: border, backgroundColor: bg, fill: true, tension: 0.3, pointRadius: 0 }],
+  };
 }
 
 onMounted(load);
@@ -108,6 +81,11 @@ onMounted(load);
       </div>
 
       <div class="chart-box">
+        <h3>Cycle time (seconds)</h3>
+        <div class="chart-wrap"><Line v-if="durationData.labels.length" :data="durationData" :options="chartOptions" /></div>
+      </div>
+
+      <div class="chart-box">
         <h3>Preview capture rate</h3>
         <div class="chart-wrap"><Line v-if="previewData.labels.length" :data="previewData" :options="chartOptions" /></div>
       </div>
@@ -121,7 +99,7 @@ onMounted(load);
 </template>
 
 <style scoped>
-.stats-page { max-width: 900px; }
+.stats-page { max-width: 100%; margin: 0 auto; }
 .stats-page h2 { margin-top: 0; font-size: 1.1rem; }
 .stats-page h3 { font-size: 0.9rem; margin: 1.25rem 0 0.5rem; color: var(--p-text-muted-color); }
 

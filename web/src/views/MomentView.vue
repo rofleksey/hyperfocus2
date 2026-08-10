@@ -5,12 +5,13 @@ import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type Stream } from "../api";
 
 const route = useRoute();
+const router = useRouter();
 const at = ref<Date | null>(route.query.at ? new Date(route.query.at as string) : new Date());
-const survivor = ref<string>("");
+const survivor = ref<string>((route.query.survivor as string) || "");
 const q = ref<string>("");
 const language = ref<string>("");
 const sort = ref<string>("viewers");
@@ -148,6 +149,9 @@ function setupObserver() {
 
 watch([survivor, q, language, sort, dir], debounceLoad);
 watch(at, debounceLoad);
+watch(survivor, (v) => {
+  router.replace({ query: { ...route.query, survivor: v || undefined } });
+});
 watch(sentinel, setupObserver);
 watch(allStreams, () => {
   setTimeout(setupObserver, 0);
@@ -161,7 +165,7 @@ function scorePct(s: Stream): string {
 function scoreColor(s: Stream): Record<string, string> {
   if (s.fuzzy_score == null) return {};
   const pct = s.fuzzy_score * 100;
-  return { background: pct >= 50 ? "#16a34a" : "#dc2626" };
+  return { background: pct >= 60 ? "#16a34a" : "#dc2626" };
 }
 
 onMounted(() => {
@@ -176,28 +180,20 @@ onUnmounted(() => {
 <template>
   <section>
     <div class="moment-bar">
-      <div class="moment-bar-row">
-        <span class="muted moment-timestamp">
-          Online at {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
-          <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
-        </span>
+      <span class="muted moment-timestamp">
+        Online at {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
+        <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
+      </span>
+      <div class="moment-controls">
+        <div class="survivor-search">
+          <span class="pi pi-search search-icon"></span>
+          <input class="survivor-input" type="text" v-model="survivor" placeholder="Search survivors…" autocomplete="off" />
+          <span v-if="survivorSearchActive" class="sort-hint">relevance</span>
+        </div>
         <div class="moment-nav">
           <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
           <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
           <Button icon="pi pi-sliders-h" label="Filters" size="small" severity="secondary" class="filter-btn" @click="filtersVisible = true" />
-        </div>
-      </div>
-      <div class="moment-bar-row">
-        <div class="survivor-search">
-          <span class="pi pi-search search-icon"></span>
-          <input
-            class="survivor-input"
-            type="text"
-            v-model="survivor"
-            placeholder="Search survivors…"
-            autocomplete="off"
-          />
-          <span v-if="survivorSearchActive" class="sort-hint">relevance</span>
         </div>
       </div>
     </div>
@@ -313,15 +309,16 @@ onUnmounted(() => {
   margin-bottom: 0.5rem;
 }
 
-.moment-bar-row {
-  display: contents;
-}
-
 .moment-timestamp {
   font-size: 0.85rem;
   white-space: nowrap;
-  flex: 1 0 auto;
-  min-width: 200px;
+}
+
+.moment-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
 }
 
 .moment-nav {
@@ -335,9 +332,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  flex: 1 0 auto;
+  flex: 1;
   max-width: 380px;
-  min-width: 200px;
+  min-width: 180px;
 }
 
 .survivor-input {
