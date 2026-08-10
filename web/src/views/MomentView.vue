@@ -165,7 +165,7 @@ function scorePct(s: Stream): string {
 function scoreColor(s: Stream): Record<string, string> {
   if (s.fuzzy_score == null) return {};
   const pct = s.fuzzy_score * 100;
-  return { background: pct >= 60 ? "#16a34a" : "#dc2626" };
+  return { background: pct >= 50 ? "#16a34a" : "#dc2626" };
 }
 
 onMounted(() => {
@@ -305,7 +305,7 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
   margin-bottom: 0.5rem;
 }
 

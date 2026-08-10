@@ -71,6 +71,7 @@
 <style scoped>
 .legal-page {
   max-width: 640px;
+  margin: 0 auto;
 }
 
 .legal-page h2 {
