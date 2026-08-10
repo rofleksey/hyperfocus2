@@ -34,6 +34,7 @@ const dirOptions = [
 const moment = ref<MomentResponse | null>(null);
 const allStreams = ref<Stream[]>([]);
 const loading = ref(false);
+const navigating = ref(false);
 const loadingMore = ref(false);
 const error = ref<string>("");
 const hasMore = ref(true);
@@ -76,7 +77,7 @@ function goPrev() {
   const idx = currentSnapshotIndex.value;
   if (idx > 0) {
     at.value = new Date(snapshots.value[idx - 1].taken_at);
-    loadFirstPage();
+    loadFirstPage(true);
   }
 }
 
@@ -84,14 +85,13 @@ function goNext() {
   const idx = currentSnapshotIndex.value;
   if (idx >= 0 && idx < snapshots.value.length - 1) {
     at.value = new Date(snapshots.value[idx + 1].taken_at);
-    loadFirstPage();
+    loadFirstPage(true);
   }
 }
 
-async function loadFirstPage() {
-  loading.value = true;
+async function loadFirstPage(nav = false) {
+  if (nav) navigating.value = true; else loading.value = true;
   error.value = "";
-  allStreams.value = [];
   offset = 0;
   hasMore.value = true;
   try {
@@ -108,6 +108,7 @@ async function loadFirstPage() {
     moment.value = null;
   } finally {
     loading.value = false;
+    navigating.value = false;
   }
 }
 
@@ -123,7 +124,6 @@ async function loadMore() {
     }
     allStreams.value.push(...page.streams);
   } catch (_e) {
-    // silently ignore load-more errors; user can scroll-trigger retry
     offset -= PAGE_SIZE;
   } finally {
     loadingMore.value = false;
@@ -132,7 +132,7 @@ async function loadMore() {
 
 function debounceLoad() {
   if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(loadFirstPage, 300);
+  debounceTimer = setTimeout(() => loadFirstPage(false), 300);
 }
 
 function setupObserver() {
@@ -150,7 +150,6 @@ watch([survivor, q, language, sort, dir], debounceLoad);
 watch(at, debounceLoad);
 watch(sentinel, setupObserver);
 watch(allStreams, () => {
-  // Re-observe sentinel after DOM update (new items shift the sentinel).
   setTimeout(setupObserver, 0);
 });
 
@@ -166,7 +165,7 @@ function scoreColor(s: Stream): Record<string, string> {
 }
 
 onMounted(() => {
-  loadFirstPage();
+  loadFirstPage(false);
 });
 
 onUnmounted(() => {
@@ -177,28 +176,30 @@ onUnmounted(() => {
 <template>
   <section>
     <div class="moment-bar">
-      <span class="muted moment-timestamp">
-        <span class="timestamp-full">Streamers online at</span>
-        <span class="timestamp-short">Online at</span>
-        {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
-        <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
-      </span>
-      <div class="survivor-search">
-        <span class="pi pi-search search-icon"></span>
-        <input
-          class="survivor-input"
-          type="text"
-          v-model="survivor"
-          placeholder="Search survivors…"
-          autocomplete="off"
-        />
-        <span v-if="survivorSearchActive" class="sort-hint">relevance</span>
+      <div class="moment-bar-row">
+        <span class="muted moment-timestamp">
+          Online at {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
+          <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
+        </span>
+        <div class="moment-nav">
+          <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
+          <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
+          <Button icon="pi pi-sliders-h" label="Filters" size="small" severity="secondary" class="filter-btn" @click="filtersVisible = true" />
+        </div>
       </div>
-      <div class="moment-nav">
-        <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
-        <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
+      <div class="moment-bar-row">
+        <div class="survivor-search">
+          <span class="pi pi-search search-icon"></span>
+          <input
+            class="survivor-input"
+            type="text"
+            v-model="survivor"
+            placeholder="Search survivors…"
+            autocomplete="off"
+          />
+          <span v-if="survivorSearchActive" class="sort-hint">relevance</span>
+        </div>
       </div>
-      <Button icon="pi pi-sliders-h" size="small" severity="secondary" @click="filtersVisible = true"><span class="filter-btn-text">Filters</span></Button>
     </div>
 
     <p v-if="error" class="muted">Error: {{ error }}</p>
@@ -271,7 +272,6 @@ onUnmounted(() => {
           :src="selectedStream.preview_url"
           :alt="selectedStream.display_name"
         />
-
         <div class="detail-info">
           <div class="detail-header">
             <img v-if="selectedStream.profile_image_url" class="detail-avatar" :src="selectedStream.profile_image_url" :alt="selectedStream.display_name" />
@@ -283,36 +283,18 @@ onUnmounted(() => {
               <span class="muted">@{{ selectedStream.login }}</span>
             </div>
           </div>
-
           <div class="detail-meta">
-            <div class="detail-row">
-              <span class="label">Viewers</span>
-              <span>{{ selectedStream.viewer_count.toLocaleString() }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Language</span>
-              <span>{{ selectedStream.language || '—' }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Started</span>
-              <span>{{ fmt(selectedStream.started_at) }}</span>
-            </div>
-            <div class="detail-row">
-              <span class="label">Title</span>
-              <span>{{ selectedStream.title || '—' }}</span>
-            </div>
-            <div v-if="selectedStream.tags.length" class="detail-row">
-              <span class="label">Tags</span>
-              <span>{{ selectedStream.tags.join(', ') }}</span>
-            </div>
+            <div class="detail-row"><span class="label">Viewers</span><span>{{ selectedStream.viewer_count.toLocaleString() }}</span></div>
+            <div class="detail-row"><span class="label">Language</span><span>{{ selectedStream.language || '—' }}</span></div>
+            <div class="detail-row"><span class="label">Started</span><span>{{ fmt(selectedStream.started_at) }}</span></div>
+            <div class="detail-row"><span class="label">Title</span><span>{{ selectedStream.title || '—' }}</span></div>
+            <div v-if="selectedStream.tags.length" class="detail-row"><span class="label">Tags</span><span>{{ selectedStream.tags.join(', ') }}</span></div>
           </div>
-
           <div class="ocr-block">
             <span class="ocr-label muted">Survivors (OCR · noisy)</span>
             <pre v-if="selectedStream.survivor_names.length" class="ocr-code"><code>{{ JSON.stringify(selectedStream.survivor_names, null, 2) }}</code></pre>
             <span v-else class="muted">—</span>
           </div>
-
           <div class="detail-links">
             <a v-if="selectedStream.twitch_url" :href="selectedStream.twitch_url" target="_blank" rel="noopener" class="link-btn">Watch on Twitch</a>
           </div>
@@ -325,25 +307,27 @@ onUnmounted(() => {
 <style scoped>
 .moment-bar {
   display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.moment-bar-row {
+  display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
-  flex-wrap: wrap;
 }
 
 .moment-timestamp {
   font-size: 0.85rem;
   white-space: nowrap;
+  flex: 1;
 }
-
-.timestamp-full { display: inline; }
-.timestamp-short { display: none; }
-
-.filter-btn-text { display: inline; }
 
 .moment-nav {
   display: flex;
   gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .survivor-search {
@@ -351,9 +335,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  min-width: 180px;
   flex: 1;
-  max-width: 320px;
+  max-width: 380px;
 }
 
 .survivor-input {
@@ -386,28 +369,17 @@ onUnmounted(() => {
 }
 
 @media (max-width: 640px) {
-  .moment-bar {
+  .moment-bar-row {
     gap: 0.5rem;
   }
 
-  .survivor-search {
-    order: 3;
-    min-width: 100%;
-    max-width: 100%;
-  }
-
-  .moment-nav {
-    order: 2;
-  }
-
   .moment-timestamp {
-    order: 1;
     font-size: 0.75rem;
   }
 
-  .timestamp-full { display: none; }
-  .timestamp-short { display: inline; }
-  .filter-btn-text { display: none; }
+  .filter-btn :deep(.p-button-label) {
+    display: none;
+  }
 }
 
 .gallery-headline {
