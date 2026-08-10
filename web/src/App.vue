@@ -7,7 +7,7 @@ import Button from "primevue/button";
   <div class="app-shell">
     <header class="app-header">
       <RouterLink to="/" class="app-logo">hyperfocus</RouterLink>
-      <span class="muted">DBD live stream history</span>
+      <span class="header-subtitle muted">DBD live stream history</span>
       <span style="flex:1"></span>
       <nav class="nav">
         <RouterLink to="/about"><Button icon="pi pi-info-circle" size="small" severity="secondary" title="About" /></RouterLink>

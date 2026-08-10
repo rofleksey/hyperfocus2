@@ -76,6 +76,7 @@ function goPrev() {
   const idx = currentSnapshotIndex.value;
   if (idx > 0) {
     at.value = new Date(snapshots.value[idx - 1].taken_at);
+    loadFirstPage();
   }
 }
 
@@ -83,6 +84,7 @@ function goNext() {
   const idx = currentSnapshotIndex.value;
   if (idx >= 0 && idx < snapshots.value.length - 1) {
     at.value = new Date(snapshots.value[idx + 1].taken_at);
+    loadFirstPage();
   }
 }
 
@@ -176,7 +178,8 @@ onUnmounted(() => {
   <section>
     <div class="moment-bar">
       <span class="muted moment-timestamp">
-        Streamers online at
+        <span class="timestamp-full">Streamers online at</span>
+        <span class="timestamp-short">Online at</span>
         {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
         <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
       </span>
@@ -195,7 +198,7 @@ onUnmounted(() => {
         <Button icon="pi pi-chevron-left" size="small" severity="secondary" :disabled="!hasPrev" @click="goPrev" />
         <Button icon="pi pi-chevron-right" size="small" severity="secondary" :disabled="!hasNext" @click="goNext" />
       </div>
-      <Button label="Filters" icon="pi pi-sliders-h" size="small" severity="secondary" @click="filtersVisible = true" />
+      <Button icon="pi pi-sliders-h" size="small" severity="secondary" @click="filtersVisible = true"><span class="filter-btn-text">Filters</span></Button>
     </div>
 
     <p v-if="error" class="muted">Error: {{ error }}</p>
@@ -333,6 +336,11 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.timestamp-full { display: inline; }
+.timestamp-short { display: none; }
+
+.filter-btn-text { display: inline; }
+
 .moment-nav {
   display: flex;
   gap: 0.25rem;
@@ -396,6 +404,10 @@ onUnmounted(() => {
     order: 1;
     font-size: 0.75rem;
   }
+
+  .timestamp-full { display: none; }
+  .timestamp-short { display: inline; }
+  .filter-btn-text { display: none; }
 }
 
 .gallery-headline {
