@@ -25,6 +25,9 @@ var diskSQL string
 //go:embed 0004_notify.sql
 var notifySQL string
 
+//go:embed 0005_notify_cascade.sql
+var notifyCascadeSQL string
+
 // Migration is a single ordered, versioned schema change.
 type Migration struct {
 	Version int
@@ -38,6 +41,7 @@ var All = []Migration{
 	{Version: 2, Name: "add_duration_seconds", SQL: durationSQL},
 	{Version: 3, Name: "add_disk_usage_bytes", SQL: diskSQL},
 	{Version: 4, Name: "add_notification_tables", SQL: notifySQL},
+	{Version: 5, Name: "add_notify_cascade_fks", SQL: notifyCascadeSQL},
 }
 
 // Run applies any pending migrations against the pool. It is idempotent.

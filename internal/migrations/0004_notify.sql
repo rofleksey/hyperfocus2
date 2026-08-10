@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS subscriber_names (
 
 CREATE TABLE IF NOT EXISTS notification_log (
     id                 BIGSERIAL PRIMARY KEY,
-    subscriber_id      BIGINT NOT NULL REFERENCES notification_subscribers(id),
+    subscriber_id      BIGINT NOT NULL REFERENCES notification_subscribers(id) ON DELETE CASCADE,
     detected_name      TEXT NOT NULL,
     match_score        REAL NOT NULL,
-    snapshot_id        BIGINT NOT NULL REFERENCES snapshots(id),
+    snapshot_id        BIGINT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
     source_streamer_id TEXT NOT NULL,
     sent_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
