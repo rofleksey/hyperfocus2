@@ -95,7 +95,8 @@ func GetPlayerSummaries(ctx context.Context, apiKey string, steamIDs []string) (
 	reqURL := fmt.Sprintf("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=%s&steamids=%s", apiKey, ids)
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, oops.Wrap(err)
 	}
@@ -130,7 +131,7 @@ func GetPlayerSummaries(ctx context.Context, apiKey string, steamIDs []string) (
 }
 
 func (c *Client) RefreshName(ctx context.Context, steamID string) (string, error) {
-	players, err := GetPlayerSummaries(ctx, c.apiKey, []string{steamID})
+	players, err := c.GetPlayerSummaries(ctx, []string{steamID})
 	if err != nil {
 		return "", err
 	}

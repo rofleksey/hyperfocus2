@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/samber/oops"
 )
@@ -14,6 +15,7 @@ import (
 type BotTokenStore struct {
 	cfg          BotConfig
 	mu           sync.RWMutex
+	refreshMu    sync.Mutex
 	accessToken  string
 	refreshToken string
 }
@@ -35,6 +37,9 @@ func (s *BotTokenStore) Get() string {
 }
 
 func (s *BotTokenStore) Refresh(ctx context.Context) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+
 	s.mu.RLock()
 	rt := s.refreshToken
 	s.mu.RUnlock()
@@ -49,7 +54,8 @@ func (s *BotTokenStore) Refresh(ctx context.Context) error {
 		strings.NewReader(data.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return oops.Wrap(err)
 	}

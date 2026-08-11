@@ -137,8 +137,12 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 			steamClient = steam.NewClient(cfg.Steam.APIKey, log)
 		}
 
-		channels, _ := repo.ActiveSubscriberChannels(ctx)
-		ircBot.Join(channels...)
+		channels, err := repo.ActiveSubscriberChannels(ctx)
+		if err != nil {
+			log.Warn("container: failed to load initial subscriber channels", slog.Any("error", err))
+		} else {
+			ircBot.Join(channels...)
+		}
 
 		bg.Add(8)
 		go func() { defer bg.Done(); pollUC.Run(bgCtx) }()

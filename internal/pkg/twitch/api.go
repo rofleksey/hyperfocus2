@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/nicklaw5/helix/v2"
@@ -12,6 +13,7 @@ import (
 
 type BotHelix struct {
 	helix   *helix.Client
+	mu      sync.Mutex
 	log     *slog.Logger
 	token   *BotTokenStore
 	botUserID string
@@ -67,11 +69,15 @@ func (b *BotHelix) RefreshLoop(ctx context.Context) {
 }
 
 func (b *BotHelix) setToken() {
+	b.mu.Lock()
 	b.helix.SetUserAccessToken(b.token.Get())
+	b.mu.Unlock()
 }
 
 func (b *BotHelix) ResolveUser(ctx context.Context, login string) (id string, displayName string, err error) {
-	b.setToken()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.helix.SetUserAccessToken(b.token.Get())
 	resp, err := b.helix.GetUsers(&helix.UsersParams{Logins: []string{login}})
 	if err != nil {
 		return "", "", oops.Wrap(err)
@@ -86,7 +92,9 @@ func (b *BotHelix) ResolveUser(ctx context.Context, login string) (id string, di
 }
 
 func (b *BotHelix) SendChatMessage(ctx context.Context, broadcasterID, message string) error {
-	b.setToken()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.helix.SetUserAccessToken(b.token.Get())
 	resp, err := b.helix.SendChatMessage(&helix.SendChatMessageParams{
 		BroadcasterID: broadcasterID,
 		SenderID:      b.botUserID,

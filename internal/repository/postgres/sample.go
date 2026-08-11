@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 
@@ -89,6 +90,9 @@ LIMIT 1;`, snapshotID, streamerID)
 		&d.Tags, &d.StartedAt, &d.VodOffsetSeconds, &d.PreviewFilename, &d.ThumbFilename, &d.SurvivorNames,
 		&d.Login, &d.DisplayName, &d.ProfileImageURL, &d.VodID,
 	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &d, nil

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -54,8 +55,8 @@ func main() {
 			case <-ctx.Done():
 				log.Info("shutdown signal received")
 			case err := <-errCh:
-				if err != nil {
-					return err
+				if err != nil && err != http.ErrServerClosed {
+					log.Error("server error", slog.Any("error", err))
 				}
 			}
 

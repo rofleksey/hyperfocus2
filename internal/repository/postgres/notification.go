@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"hyperfocus/internal/entity"
 )
@@ -41,7 +44,13 @@ FROM notification_subscribers WHERE twitch_login = $1;`, twitchLogin).Scan(
 		&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID, &s.SteamName,
 		&s.Status, &s.CreatedAt, &s.VerifiedAt,
 	)
-	return &s, err
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &s, nil
 }
 
 func (r *Repository) GetSubscriberNames(ctx context.Context, subscriberID int64) ([]string, error) {

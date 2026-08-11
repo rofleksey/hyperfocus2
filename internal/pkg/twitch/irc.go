@@ -65,21 +65,18 @@ func (b *IRCBot) runOnce(ctx context.Context) {
 	}
 	b.mu.Unlock()
 
-	// We need to join channels AFTER Connect starts in a goroutine.
-	// The library handles initial joins via Join() called before/after Connect.
-	// Since Connect blocks, we need a goroutine.
-	ready := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
-		// Small delay to let the connection establish
-		time.Sleep(2 * time.Second)
-		close(ready)
-	}()
-
-	go func() {
-		<-ready
+		select {
+		case <-time.After(2 * time.Second):
+		case <-done:
+			return
+		}
 		b.mu.Lock()
-		for _, ch := range chs {
-			c.Join(ch)
+		if b.client == c {
+			for _, ch := range chs {
+				c.Join(ch)
+			}
 		}
 		b.mu.Unlock()
 	}()
@@ -88,8 +85,13 @@ func (b *IRCBot) runOnce(ctx context.Context) {
 	if err := c.Connect(); err != nil {
 		b.log.Warn("irc: connection ended", slog.Any("error", err))
 	}
+	close(done)
 	b.log.Info("irc: disconnected, will reconnect")
-	time.Sleep(10 * time.Second)
+
+	select {
+	case <-time.After(10 * time.Second):
+	case <-ctx.Done():
+	}
 }
 
 func (b *IRCBot) Join(channels ...string) {

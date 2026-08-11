@@ -116,6 +116,11 @@ func (s *Service) activeSubscribers(ctx context.Context) []cachedSubscriber {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Re-check: another goroutine may have refreshed while we waited for the lock.
+	if time.Now().Before(s.cacheUntil) {
+		return s.cache
+	}
+
 	subs, err := s.repo.ActiveSubscribersWithNames(ctx)
 	if err != nil {
 		s.log.Warn("notify: failed to load subscribers", slog.Any("error", err))

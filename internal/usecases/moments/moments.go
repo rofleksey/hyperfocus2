@@ -155,6 +155,9 @@ func (s *Service) SampleAt(ctx context.Context, streamerID string, at time.Time)
 	}
 	snap, err := s.repo.SnapshotAtOrBefore(ctx, at)
 	if err != nil {
+		if errors.Is(err, entity.ErrNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return s.repo.FindSampleByStreamer(ctx, snap.ID, streamerID)

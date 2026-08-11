@@ -67,7 +67,7 @@ func (r *Repository) RunInTx(ctx context.Context, f func(ctx context.Context) er
 	}
 	tctx := context.WithValue(ctx, txKey{}, tx)
 	if err := f(tctx); err != nil {
-		_ = tx.Rollback(ctx)
+		_ = tx.Rollback(context.Background())
 		return err
 	}
 	if err := tx.Commit(tctx); err != nil {
