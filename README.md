@@ -15,7 +15,7 @@ Hyperfocus tracks every active [Dead by Daylight](https://store.steampowered.com
 - **Thumbnail gallery** — responsive grid of 16:9 stream previews with viewer counts, relevance scores, and infinite scroll
 - **OCR survivor names** — extracts the 4 player names from the bottom-left HUD of each stream's preview using [PaddleOCR on ONNX Runtime](https://github.com/rofleksey/hyperfocus2-ocr)
 - **Fuzzy search** — search by streamer name, language, or survivor in-game name with a loose matcher that tolerates OCR recognition errors
-- **Streamer detail** — click any streamer to see their current sample (viewer count, title, tags, survivors, preview) and past sessions
+- **Streamer detail** — click any streamer to see their sample at that moment: preview, viewer count, title, tags, and OCR survivor names
 - **Stats charts** — line charts for streams online, total viewers, cycle time, disk usage, preview capture rate, and OCR success rate over time
 - **Notifications** — optional Twitch chat bot that notifies streamers when a tracked player appears in their lobby
 - **No accounts, no cookies** — built with Vue 3 + PrimeVue, dark theme, responsive
