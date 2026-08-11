@@ -79,7 +79,6 @@ WHERE last_seen < $1
   AND twitch_user_id NOT IN (
       SELECT streamer_id FROM stream_samples
       UNION SELECT streamer_id FROM stream_sessions
-      UNION SELECT streamer_id FROM vods
   );`, cutoff)
 	if err != nil {
 		return 0, err

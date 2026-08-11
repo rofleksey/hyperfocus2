@@ -1,11 +1,8 @@
-// Package migrations holds the embedded SQL migrations and a small
-// version-tracked runner. Each migration runs in its own transaction.
 package migrations
 
 import (
 	"context"
 	_ "embed"
-	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,35 +13,16 @@ import (
 //go:embed 0001_init.sql
 var initSQL string
 
-//go:embed 0002_duration.sql
-var durationSQL string
-
-//go:embed 0003_disk.sql
-var diskSQL string
-
-//go:embed 0004_notify.sql
-var notifySQL string
-
-//go:embed 0005_notify_cascade.sql
-var notifyCascadeSQL string
-
-// Migration is a single ordered, versioned schema change.
 type Migration struct {
 	Version int
 	Name    string
 	SQL     string
 }
 
-// All is the ordered list of migrations.
 var All = []Migration{
 	{Version: 1, Name: "init_schema", SQL: initSQL},
-	{Version: 2, Name: "add_duration_seconds", SQL: durationSQL},
-	{Version: 3, Name: "add_disk_usage_bytes", SQL: diskSQL},
-	{Version: 4, Name: "add_notification_tables", SQL: notifySQL},
-	{Version: 5, Name: "add_notify_cascade_fks", SQL: notifyCascadeSQL},
 }
 
-// Run applies any pending migrations against the pool. It is idempotent.
 func Run(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_version (
@@ -67,7 +45,6 @@ func Run(ctx context.Context, pool *pgxpool.Pool) error {
 		if err := apply(ctx, pool, m); err != nil {
 			return err
 		}
-		fmt.Printf("migrations: applied v%d %s\n", m.Version, m.Name)
 	}
 	return nil
 }
