@@ -10,13 +10,20 @@ db:
   user: "postgres"
   password: ""
   database: "hyperfocus"
-  ssl_mode: "disable"
+  ssl_mode: "prefer"    # disable | allow | prefer | require | verify-ca | verify-full
   max_conns: 10
 
 twitch:
   client_id: ""        # required: your Twitch Developer Application client id
   client_secret: ""    # required: your Twitch Developer Application client secret
   game_id: "491487"    # Dead by Daylight
+
+# Optional: separate bot credentials for IRC / chat notifications.
+# If omitted, client_id and client_secret fall back to twitch.*.
+twitch_bot:
+  client_id: ""
+  client_secret: ""
+  refresh_token: ""    # obtained via the Twitch OAuth authorization code flow
 
 poll:
   page_size: 100
@@ -32,7 +39,7 @@ poll:
 
 prune:
   interval: "1h"
-  hours: 72               # data retention window
+  hours: 72           # data retention window
 
 storage:
   data_dir: "./data"
@@ -42,6 +49,17 @@ ocr:
   api_url: "http://localhost:8081"  # base URL of the hyperfocus2-ocr microservice
   workers: 2                # Go goroutines issuing concurrent OCR requests
   timeout: "15s"            # per-request timeout for the OCR microservice
+
+# Optional: Twitch chat notifications for lobby detection.
+notify:
+  enabled: false            # set true to enable the notification bot
+  min_score: 0.60           # minimum fuzzy-match score for a player-name detection
+  cooldown: "30m"           # minimum time between notifications for the same player
+
+# Optional: Steam API integration for persona name resolution.
+steam:
+  api_key: ""               # Steam Web API key
+  refresh_every: "30m"      # how often to refresh Steam persona names
 
 log:
   level: "info"           # debug | info | warn | error

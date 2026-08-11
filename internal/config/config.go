@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,11 +134,14 @@ func Load(path string) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read config %q: %w", path, err)
 		}
-		if err := yaml.Unmarshal(raw, cfg); err != nil {
+		dec := yaml.NewDecoder(strings.NewReader(string(raw)))
+		dec.KnownFields(true)
+		if err := dec.Decode(cfg); err != nil {
 			return nil, fmt.Errorf("parse config %q: %w", path, err)
 		}
 	}
 
+	applyEnvOverrides(cfg)
 	applyDefaults(cfg)
 
 	v := validator.New(validator.WithRequiredStructEnabled())
@@ -147,74 +151,96 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+func applyEnvOverrides(c *Config) {
+	envStr := func(env string, dst *string) {
+		if v := os.Getenv(env); v != "" {
+			*dst = v
+		}
+	}
+	envInt := func(env string, dst *int) {
+		if v := os.Getenv(env); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				*dst = n
+			}
+		}
+	}
+	envStr("HYPERFOCUS_SERVICE_HTTP_ADDR", &c.Service.HTTPAddr)
+	envStr("HYPERFOCUS_DB_HOST", &c.DB.Host)
+	envInt("HYPERFOCUS_DB_PORT", &c.DB.Port)
+	envStr("HYPERFOCUS_DB_USER", &c.DB.User)
+	envStr("HYPERFOCUS_DB_PASSWORD", &c.DB.Password)
+	envStr("HYPERFOCUS_DB_DATABASE", &c.DB.Database)
+	envStr("HYPERFOCUS_DB_SSLMODE", &c.DB.SSLMode)
+	envStr("HYPERFOCUS_TWITCH_CLIENT_ID", &c.Twitch.ClientID)
+	envStr("HYPERFOCUS_TWITCH_CLIENT_SECRET", &c.Twitch.ClientSecret)
+	envStr("HYPERFOCUS_TWITCHBOT_REFRESH_TOKEN", &c.TwitchBot.RefreshToken)
+	envStr("HYPERFOCUS_STEAM_API_KEY", &c.Steam.APIKey)
+	envStr("HYPERFOCUS_OCR_API_URL", &c.OCR.APIURL)
+	envStr("HYPERFOCUS_STORAGE_DATA_DIR", &c.Storage.DataDir)
+}
+
+func set[T comparable](dst *T, def T) {
+	var zero T
+	if *dst == zero {
+		*dst = def
+	}
+}
+
 // applyDefaults fills any unset value. It only writes fields that are still at
 // their zero value, so explicit YAML values are always preserved.
 func applyDefaults(c *Config) {
-	setStr := func(dst *string, v string) {
-		if strings.TrimSpace(*dst) == "" {
-			*dst = v
-		}
-	}
-	setInt := func(dst *int, v int) {
-		if *dst == 0 {
-			*dst = v
-		}
-	}
-	setInt32 := func(dst *int32, v int32) {
-		if *dst == 0 {
-			*dst = v
-		}
-	}
+	set(&c.Service.Name, "hyperfocus")
+	set(&c.Service.HTTPAddr, ":8080")
 
-	setStr(&c.Service.Name, "hyperfocus")
-	setStr(&c.Service.HTTPAddr, ":8080")
+	set(&c.DB.Host, "localhost")
+	set(&c.DB.Port, 5432)
+	set(&c.DB.User, "postgres")
+	set(&c.DB.Database, "dbd")
+	set(&c.DB.SSLMode, "prefer")
+	set(&c.DB.MaxConns, int32(10))
 
-	setStr(&c.DB.Host, "localhost")
-	setInt(&c.DB.Port, 5432)
-	setStr(&c.DB.User, "postgres")
-	setStr(&c.DB.Database, "dbd")
-	setStr(&c.DB.SSLMode, "disable")
-	setInt32(&c.DB.MaxConns, 10)
-
-	setStr(&c.Twitch.GameID, "491487") // Dead by Daylight
+	set(&c.Twitch.GameID, "491487") // Dead by Daylight
 
 	if c.Poll.PageDelay == 0 {
 		c.Poll.PageDelay = Duration(time.Second)
 	}
-	setInt(&c.Poll.PreviewWidth, 1280)
-	setInt(&c.Poll.PreviewHeight, 720)
-	setInt(&c.Poll.ThumbPreviewWidth, 480)
-	setInt(&c.Poll.ThumbPreviewHeight, 270)
-	setInt(&c.Poll.PreviewWorkers, 16)
+	set(&c.Poll.PreviewWidth, 1280)
+	set(&c.Poll.PreviewHeight, 720)
+	set(&c.Poll.ThumbPreviewWidth, 480)
+	set(&c.Poll.ThumbPreviewHeight, 270)
+	set(&c.Poll.PreviewWorkers, 16)
 	if c.Poll.PreviewTimeout == 0 {
 		c.Poll.PreviewTimeout = Duration(10 * time.Second)
 	}
-	setInt(&c.Poll.FetchMaxAttempts, 3)
+	set(&c.Poll.FetchMaxAttempts, 3)
 	if c.Poll.FetchDelay == 0 {
 		c.Poll.FetchDelay = Duration(2 * time.Second)
+	}
+	if c.Poll.PageSize <= 0 {
+		c.Poll.PageSize = 100
 	}
 
 	if c.Prune.Interval == 0 {
 		c.Prune.Interval = Duration(time.Hour)
 	}
-	if c.Prune.Hours <= 0 {
-		c.Prune.Hours = 72
-	}
+	set(&c.Prune.Hours, 72)
 
-	setStr(&c.Storage.DataDir, "./data")
+	set(&c.Storage.DataDir, "./data")
 
 	if c.OCR.Enabled == nil {
 		t := true
 		c.OCR.Enabled = &t
 	}
-	setStr(&c.OCR.APIURL, "http://localhost:8081")
-	setInt(&c.OCR.Workers, 1)
+	set(&c.OCR.APIURL, "http://localhost:8081")
+	if c.OCR.Workers <= 0 {
+		c.OCR.Workers = 2
+	}
 	if c.OCR.Timeout == 0 {
 		c.OCR.Timeout = Duration(15 * time.Second)
 	}
 
-	setStr(&c.Log.Level, "info")
-	setStr(&c.Log.Format, "console")
+	set(&c.Log.Level, "info")
+	set(&c.Log.Format, "console")
 
 	if c.Notify.Enabled == nil {
 		f := false
