@@ -38,6 +38,9 @@ func New(ctx context.Context, cfg config.DB) (*Repository, error) {
 		pcfg.MaxConns = cfg.MaxConns
 	}
 	pcfg.MaxConnLifetime = time.Hour
+	pcfg.MaxConnIdleTime = 30 * time.Minute
+	pcfg.MinConns = 2
+	pcfg.HealthCheckPeriod = 1 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
 	if err != nil {

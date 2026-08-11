@@ -93,7 +93,7 @@ func (s *Service) ExtractSurvivors(ctx context.Context, path string) ([]string, 
 	}
 
 	var out ocrResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil {
 		s.log.Warn("ocr: failed to decode response",
 			slog.String("image", path), slog.Any("error", err))
 		return nil, oops.Wrap(err)

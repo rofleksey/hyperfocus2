@@ -251,12 +251,15 @@ func steamRefreshLoop(ctx context.Context, client *steam.Client, repo interface 
 				log.Warn("steam: refresh failed to load subscribers", slog.Any("error", err))
 				continue
 			}
+			subBySteamID := make(map[string]entity.NotificationSubscriber, len(subs))
+			for _, s := range subs {
+				subBySteamID[s.SteamID] = s
+			}
 			ids := make([]string, 0, len(subs))
 			for _, s := range subs {
 				ids = append(ids, s.SteamID)
 			}
 
-			// Batch up to 100 IDs per call.
 			for len(ids) > 0 {
 				batch := ids
 				if len(batch) > 100 {
@@ -270,14 +273,11 @@ func steamRefreshLoop(ctx context.Context, client *steam.Client, repo interface 
 					continue
 				}
 				for _, sum := range summaries {
-					// Find subscriber by steam_id and update
-					for _, s := range subs {
-						if s.SteamID == sum.SteamID && s.SteamName != sum.PersonaName {
-							if err := repo.UpdateSteamName(ctx, s.ID, sum.PersonaName); err != nil {
-								log.Warn("steam: update name failed", slog.Any("error", err))
-							} else {
-								log.Info("steam: name updated", slog.String("from", s.SteamName), slog.String("to", sum.PersonaName))
-							}
+					if s, ok := subBySteamID[sum.SteamID]; ok && s.SteamName != sum.PersonaName {
+						if err := repo.UpdateSteamName(ctx, s.ID, sum.PersonaName); err != nil {
+							log.Warn("steam: update name failed", slog.Any("error", err))
+						} else {
+							log.Info("steam: name updated", slog.String("from", s.SteamName), slog.String("to", sum.PersonaName))
 						}
 					}
 				}

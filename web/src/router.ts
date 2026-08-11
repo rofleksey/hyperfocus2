@@ -1,23 +1,15 @@
 import { createRouter, createWebHistory } from "vue-router";
-import MomentView from "./views/MomentView.vue";
-import StreamDetailView from "./views/StreamDetailView.vue";
-import StatsView from "./views/StatsView.vue";
-import AboutView from "./views/AboutView.vue";
-import PrivacyView from "./views/PrivacyView.vue";
-import TermsView from "./views/TermsView.vue";
-import SubscribeView from "./views/SubscribeView.vue";
-import NotFoundView from "./views/NotFoundView.vue";
 
 export default createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", name: "moment", component: MomentView },
-    { path: "/stream/:streamer_id", name: "stream-detail", component: StreamDetailView, props: true },
-    { path: "/stats", name: "stats", component: StatsView },
-    { path: "/subscribe", name: "subscribe", component: SubscribeView },
-    { path: "/about", name: "about", component: AboutView },
-    { path: "/privacy", name: "privacy", component: PrivacyView },
-    { path: "/terms", name: "terms", component: TermsView },
-    { path: "/:pathMatch(.*)*", name: "not-found", component: NotFoundView },
+    { path: "/", name: "moment", component: () => import("./views/MomentView.vue") },
+    { path: "/stream/:streamer_id", name: "stream-detail", component: () => import("./views/StreamDetailView.vue"), props: true },
+    { path: "/stats", name: "stats", component: () => import("./views/StatsView.vue") },
+    { path: "/subscribe", name: "subscribe", component: () => import("./views/SubscribeView.vue") },
+    { path: "/about", name: "about", component: () => import("./views/AboutView.vue") },
+    { path: "/privacy", name: "privacy", component: () => import("./views/PrivacyView.vue") },
+    { path: "/terms", name: "terms", component: () => import("./views/TermsView.vue") },
+    { path: "/:pathMatch(.*)*", name: "not-found", component: () => import("./views/NotFoundView.vue") },
   ],
 });

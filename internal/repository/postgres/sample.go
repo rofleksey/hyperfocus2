@@ -40,6 +40,7 @@ ON CONFLICT (snapshot_id, session_id) DO UPDATE SET
 // vod presence, and ordered by a whitelisted sort key. If limit <= 0, ALL
 // matching rows are returned.
 func (r *Repository) FindSamples(ctx context.Context, snapshotID int64, query string, language string, vod string, sort string, dir string, limit int, offset int) ([]entity.SampleDetail, error) {
+	escQuery := escapeILIKE(query)
 	baseSelect := `
 SELECT s.snapshot_id, s.session_id, s.streamer_id, s.viewer_count, s.title, s.language,
        s.tags, s.started_at, s.vod_offset_seconds, s.preview_filename, s.thumb_filename, s.survivor_names,
@@ -48,14 +49,13 @@ FROM stream_samples s
 JOIN streamers st ON st.twitch_user_id = s.streamer_id
 JOIN stream_sessions sess ON sess.id = s.session_id
 WHERE s.snapshot_id = $1
-  AND ($2::text = '' OR st.login ILIKE '%' || $2 || '%' OR st.display_name ILIKE '%' || $2 || '%')
+  AND ($2::text = '' OR st.login ILIKE '%' || $2 || '%' ESCAPE '\' OR st.display_name ILIKE '%' || $2 || '%' ESCAPE '\')
   AND ($3::text = '' OR s.language = $3)
   AND ($4::text = 'all' OR $4::text = '' OR ($4::text = 'has' AND sess.vod_id IS NOT NULL) OR ($4::text = 'no' AND sess.vod_id IS NULL))
 ORDER BY ` + buildOrderBy(sort, dir) + ` NULLS LAST`
 
-	// No limit by default: every stream in the moment is returned.
 	if limit <= 0 {
-		rows, err := r.db(ctx).Query(ctx, baseSelect+`;`, snapshotID, query, language, vod)
+		rows, err := r.db(ctx).Query(ctx, baseSelect+`;`, snapshotID, escQuery, language, vod)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +64,7 @@ ORDER BY ` + buildOrderBy(sort, dir) + ` NULLS LAST`
 	}
 
 	rows, err := r.db(ctx).Query(ctx, baseSelect+`
-LIMIT $5 OFFSET $6;`, snapshotID, query, language, vod, limit, offset)
+LIMIT $5 OFFSET $6;`, snapshotID, escQuery, language, vod, limit, offset)
 	if err != nil {
 		return nil, err
 	}

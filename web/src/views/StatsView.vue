@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { Chart, registerables } from "chart.js";
+import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler } from "chart.js";
 import { Line } from "vue-chartjs";
 import { fetchStats, type SnapshotStat } from "../api";
 
-Chart.register(...registerables);
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler);
 
 const stats = ref<SnapshotStat[]>([]);
 const loading = ref(false);

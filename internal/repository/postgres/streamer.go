@@ -49,12 +49,13 @@ func (r *Repository) ListStreamers(ctx context.Context, q string, limit int) ([]
 	if limit <= 0 {
 		limit = 50
 	}
+	esc := escapeILIKE(q)
 	rows, err := r.db(ctx).Query(ctx, `
 SELECT twitch_user_id, login, display_name, profile_image_url, last_seen
 FROM streamers
-WHERE $2::text = '' OR login ILIKE '%' || $2 || '%' OR display_name ILIKE '%' || $2 || '%'
+WHERE $2::text = '' OR login ILIKE '%' || $2 || '%' ESCAPE '\' OR display_name ILIKE '%' || $2 || '%' ESCAPE '\'
 ORDER BY display_name
-LIMIT $1;`, limit, q)
+LIMIT $1;`, limit, esc)
 	if err != nil {
 		return nil, err
 	}
