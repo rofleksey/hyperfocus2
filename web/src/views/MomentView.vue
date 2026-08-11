@@ -152,7 +152,6 @@ async function checkLatest(signal?: AbortSignal) {
 }
 
 function debounceLoad() {
-  if (syncingFromRoute > 0) return;
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(loadFirstPage, DEBOUNCE_MS);
 }

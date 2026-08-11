@@ -19,7 +19,8 @@ func (r *Repository) SnapshotStats(ctx context.Context, n int) ([]entity.Snapsho
 		n = 500
 	}
 	rows, err := r.db(ctx).Query(ctx, `
-SELECT s.id, s.taken_at, s.stream_count, s.duration_seconds, s.disk_usage_bytes,
+SELECT s.id, s.taken_at, s.stream_count, COALESCE(SUM(ss.viewer_count), 0),
+       s.duration_seconds, s.disk_usage_bytes,
        COUNT(ss.snapshot_id) FILTER (WHERE ss.preview_filename IS NOT NULL) AS previews_ok,
        COUNT(ss.snapshot_id) FILTER (WHERE cardinality(ss.survivor_names) > 0) AS ocr_ok,
        COUNT(ss.snapshot_id) AS total
@@ -37,7 +38,7 @@ ORDER BY s.taken_at ASC;`, n)
 	var out []entity.SnapshotStat
 	for rows.Next() {
 		var st entity.SnapshotStat
-		if err := rows.Scan(&st.ID, &st.TakenAt, &st.StreamCount, &st.DurationSeconds, &st.DiskUsageBytes, &st.PreviewOK, &st.OCROK, &st.Total); err != nil {
+		if err := rows.Scan(&st.ID, &st.TakenAt, &st.StreamCount, &st.TotalViewers, &st.DurationSeconds, &st.DiskUsageBytes, &st.PreviewOK, &st.OCROK, &st.Total); err != nil {
 			return nil, err
 		}
 		out = append(out, st)

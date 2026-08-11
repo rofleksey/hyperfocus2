@@ -6,6 +6,7 @@ type SnapshotStat struct {
 	ID              int64     `json:"id"`
 	TakenAt         time.Time `json:"taken_at"`
 	StreamCount     int       `json:"stream_count"`
+	TotalViewers    int64     `json:"total_viewers"`
 	DurationSeconds float64   `json:"duration_seconds"`
 	DiskUsageBytes  int64     `json:"disk_usage_bytes"`
 	PreviewOK       int       `json:"preview_ok"`

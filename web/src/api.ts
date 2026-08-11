@@ -66,6 +66,7 @@ export interface SnapshotStat {
   id: number;
   taken_at: string;
   stream_count: number;
+  total_viewers: number;
   duration_seconds: number;
   disk_usage_bytes: number;
   preview_ok: number;
