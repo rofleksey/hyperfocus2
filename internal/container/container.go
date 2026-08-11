@@ -101,7 +101,6 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 
 	ircCommands := make(chan nottwitch.IRCCommand, 32)
 	var subHandler *httpHandlers.SubscribeHandler
-	var steamClient *steam.Client
 
 	bgCtx, cancel := context.WithCancel(ctx)
 	bg := new(sync.WaitGroup)
@@ -123,6 +122,7 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 			Logger:    log,
 			Repo:      repo,
 			IRC:       ircBot,
+			Steam:     newSteamNameResolver(cfg.Steam, log),
 			BotUserID: botHelix.BotUserID(),
 			Config:    cfg.Notify,
 		})
@@ -131,10 +131,6 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 
 		pollUC.AfterCycle = func(pCtx context.Context, snapshotID int64, samples []entity.StreamSample) {
 			notifyUC.ProcessSnapshot(pCtx, snapshotID, samples)
-		}
-
-		if cfg.Steam.APIKey != "" {
-			steamClient = steam.NewClient(cfg.Steam.APIKey, log)
 		}
 
 		channels, err := repo.ActiveSubscriberChannels(ctx)
@@ -153,11 +149,6 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		go func() { defer bg.Done(); ircBot.Run(bgCtx) }()
 		go func() { defer bg.Done(); channelRefreshLoop(bgCtx, ircBot, repo) }()
 		go func() { defer bg.Done(); cleanupLoop(bgCtx, repo, log) }()
-
-		if steamClient != nil {
-			bg.Add(1)
-			go func() { defer bg.Done(); steamRefreshLoop(bgCtx, steamClient, repo, cfg.Steam.RefreshEvery.Std(), log) }()
-		}
 	} else {
 		bg.Add(3)
 		go func() { defer bg.Done(); pollUC.Run(bgCtx) }()
@@ -235,53 +226,33 @@ func cleanupLoop(ctx context.Context, repo interface{ DeletePendingExpired(conte
 	}
 }
 
-func steamRefreshLoop(ctx context.Context, client *steam.Client, repo interface {
-	ActiveSubscribersWithNames(context.Context) ([]entity.NotificationSubscriber, error)
-	UpdateSteamName(context.Context, int64, string) error
-}, every time.Duration, log *slog.Logger) {
-	t := time.NewTicker(every)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			subs, err := repo.ActiveSubscribersWithNames(ctx)
-			if err != nil {
-				log.Warn("steam: refresh failed to load subscribers", slog.Any("error", err))
-				continue
-			}
-			subBySteamID := make(map[string]entity.NotificationSubscriber, len(subs))
-			for _, s := range subs {
-				subBySteamID[s.SteamID] = s
-			}
-			ids := make([]string, 0, len(subs))
-			for _, s := range subs {
-				ids = append(ids, s.SteamID)
-			}
-
-			for len(ids) > 0 {
-				batch := ids
-				if len(batch) > 100 {
-					batch = batch[:100]
-				}
-				ids = ids[len(batch):]
-
-				summaries, err := client.GetPlayerSummaries(ctx, batch)
-				if err != nil {
-					log.Warn("steam: refresh api call failed", slog.Any("error", err))
-					continue
-				}
-				for _, sum := range summaries {
-					if s, ok := subBySteamID[sum.SteamID]; ok && s.SteamName != sum.PersonaName {
-						if err := repo.UpdateSteamName(ctx, s.ID, sum.PersonaName); err != nil {
-							log.Warn("steam: update name failed", slog.Any("error", err))
-						} else {
-							log.Info("steam: name updated", slog.String("from", s.SteamName), slog.String("to", sum.PersonaName))
-						}
-					}
-				}
-			}
-		}
+func newSteamNameResolver(cfg config.Steam, log *slog.Logger) *steamNameResolver {
+	if cfg.APIKey == "" {
+		return &steamNameResolver{}
 	}
+	return &steamNameResolver{apiKey: cfg.APIKey, log: log}
+}
+
+type steamNameResolver struct {
+	apiKey string
+	log    *slog.Logger
+}
+
+func (r *steamNameResolver) GetPlayerSummaries(ctx context.Context, steamIDs []string) ([]string, error) {
+	if r.apiKey == "" || len(steamIDs) == 0 {
+		return nil, nil
+	}
+	summaries, err := steam.GetPlayerSummaries(ctx, r.apiKey, steamIDs)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]string, len(summaries))
+	for _, s := range summaries {
+		byID[s.SteamID] = s.PersonaName
+	}
+	out := make([]string, len(steamIDs))
+	for i, id := range steamIDs {
+		out[i] = byID[id]
+	}
+	return out, nil
 }

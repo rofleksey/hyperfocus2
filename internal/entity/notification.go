@@ -8,7 +8,6 @@ type NotificationSubscriber struct {
 	TwitchUserID string
 	SteamURL     string
 	SteamID      string
-	SteamName    string
 	Status       string
 	CreatedAt    time.Time
 	VerifiedAt   *time.Time

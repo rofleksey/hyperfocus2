@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS notification_subscribers (
     twitch_user_id  TEXT NOT NULL,
     steam_url       TEXT NOT NULL,
     steam_id        TEXT NOT NULL,
-    steam_name      TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     verified_at     TIMESTAMPTZ

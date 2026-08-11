@@ -18,7 +18,7 @@ import (
 
 type SubscribeRepo interface {
 	GetSubscriberByTwitch(ctx context.Context, twitchLogin string) (*entity.NotificationSubscriber, error)
-	InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber, names []string) (int64, error)
+	InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber) (int64, error)
 	UpdateSubscriberStatus(ctx context.Context, subscriberID int64, status string) error
 	DeleteSubscriber(ctx context.Context, subscriberID int64) error
 }
@@ -57,10 +57,6 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 		h.handleGet(w, r)
 		return
 	}
-	if r.Method == http.MethodDelete {
-		h.handleDelete(w, r)
-		return
-	}
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
@@ -81,15 +77,17 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 
 	existing, err := h.repo.GetSubscriberByTwitch(r.Context(), req.TwitchLogin)
 	if err == nil && existing != nil {
+		// Fetch Steam name on the fly for the response.
+		steamName := h.fetchSteamName(r.Context(), existing.SteamID)
 		httputil.JSON(w, http.StatusConflict, subscribeResponse{
 			Status:    existing.Status,
-			SteamName: existing.SteamName,
+			SteamName: steamName,
 			Message:   "subscription already exists; type !hyperfocussub in your chat if status is pending",
 		})
 		return
 	}
 
-	twitchUserID, twitchDisplayName, err := h.botHelix.ResolveUser(r.Context(), req.TwitchLogin)
+	twitchUserID, _, err := h.botHelix.ResolveUser(r.Context(), req.TwitchLogin)
 	if err != nil {
 		h.log.Warn("subscribe: resolve twitch user failed", slog.String("login", req.TwitchLogin), slog.Any("error", err))
 		httputil.JSON(w, http.StatusBadRequest, map[string]string{"error": "twitch user not found"})
@@ -110,28 +108,16 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	var steamName string
-	if h.steamKey != "" {
-		sc := steam.NewClient(h.steamKey, h.log)
-		if name, err := sc.RefreshName(r.Context(), steamID); err == nil {
-			steamName = name
-		} else {
-			h.log.Warn("subscribe: steam name fetch failed", slog.Any("error", err))
-		}
-	}
-	if steamName == "" {
-		steamName = twitchDisplayName
-	}
+	steamName := h.fetchSteamName(r.Context(), steamID)
 
 	sub := entity.NotificationSubscriber{
 		TwitchLogin:  req.TwitchLogin,
 		TwitchUserID: twitchUserID,
 		SteamURL:     req.SteamURL,
 		SteamID:      steamID,
-		SteamName:    steamName,
 	}
 
-	id, err := h.repo.InsertSubscriber(r.Context(), sub, nil)
+	id, err := h.repo.InsertSubscriber(r.Context(), sub)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -157,6 +143,17 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (h *SubscribeHandler) fetchSteamName(ctx context.Context, steamID string) string {
+	if h.steamKey == "" || steamID == "" {
+		return steamID
+	}
+	sc := steam.NewClient(h.steamKey, h.log)
+	if name, err := sc.RefreshName(ctx, steamID); err == nil {
+		return name
+	}
+	return steamID
+}
+
 func (h *SubscribeHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 	twitchLogin := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("twitch")))
 	if twitchLogin == "" {
@@ -168,34 +165,7 @@ func (h *SubscribeHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 		httputil.JSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	httputil.JSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: sub.SteamName})
-}
-
-func (h *SubscribeHandler) handleDelete(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TwitchLogin string `json:"twitch_login"`
-	}
-	if err := httputil.DecodeJSON(w, r, &req); err != nil {
-		httputil.JSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
-		return
-	}
-	req.TwitchLogin = strings.ToLower(strings.TrimSpace(req.TwitchLogin))
-	if req.TwitchLogin == "" {
-		httputil.JSON(w, http.StatusBadRequest, map[string]string{"error": "twitch_login required"})
-		return
-	}
-	sub, err := h.repo.GetSubscriberByTwitch(r.Context(), req.TwitchLogin)
-	if err != nil || sub == nil {
-		httputil.JSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	if err := h.repo.DeleteSubscriber(r.Context(), sub.ID); err != nil {
-		httputil.JSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
-		return
-	}
-	h.irc.Part(req.TwitchLogin)
-	h.irc.Send(req.TwitchLogin, "You have been unsubscribed from hyperfocus notifications.")
-	httputil.JSON(w, http.StatusOK, map[string]string{"status": "unsubscribed"})
+	httputil.JSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: h.fetchSteamName(r.Context(), sub.SteamID)})
 }
 
 // HandleIRCCommand processes !hyperfocussub / !hyperfocusunsub from the IRC bot.

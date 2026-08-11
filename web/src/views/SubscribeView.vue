@@ -50,27 +50,6 @@ async function subscribe() {
     error.value = 'Network error';
   } finally { loading.value = false; }
 }
-
-async function unsubscribe() {
-  loading.value = true; error.value = ''; success.value = '';
-  try {
-    const r = await fetch('/api/subscribe', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ twitch_login: twitchLogin.value.trim() }),
-    });
-    if (r.ok) {
-      success.value = 'Unsubscribed successfully.';
-      status.value = '';
-      steamName.value = '';
-    } else {
-      const d = await r.json();
-      error.value = d.error || 'Failed to unsubscribe';
-    }
-  } catch {
-    error.value = 'Network error';
-  } finally { loading.value = false; }
-}
 </script>
 
 <template>
@@ -103,7 +82,6 @@ async function unsubscribe() {
 
       <div class="actions">
         <Button label="Subscribe" severity="primary" :loading="loading" @click="subscribe" :disabled="!twitchLogin.trim() || !steamURL.trim()" />
-        <Button v-if="status" label="Unsubscribe" severity="danger" text size="small" :loading="loading" @click="unsubscribe" />
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>

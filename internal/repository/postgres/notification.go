@@ -11,27 +11,16 @@ import (
 	"hyperfocus/internal/entity"
 )
 
-// --- subscribers ---
-
-func (r *Repository) InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber, names []string) (int64, error) {
+func (r *Repository) InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber) (int64, error) {
 	var id int64
 	err := r.db(ctx).QueryRow(ctx, `
-INSERT INTO notification_subscribers (twitch_login, twitch_user_id, steam_url, steam_id, steam_name, status)
-VALUES ($1, $2, $3, $4, $5, 'pending')
+INSERT INTO notification_subscribers (twitch_login, twitch_user_id, steam_url, steam_id, status)
+VALUES ($1, $2, $3, $4, 'pending')
 RETURNING id;`,
-		sub.TwitchLogin, sub.TwitchUserID, sub.SteamURL, sub.SteamID, sub.SteamName,
+		sub.TwitchLogin, sub.TwitchUserID, sub.SteamURL, sub.SteamID,
 	).Scan(&id)
 	if err != nil {
 		return 0, err
-	}
-
-	for _, n := range names {
-		if _, err := r.db(ctx).Exec(ctx, `
-INSERT INTO subscriber_names (subscriber_id, in_game_name)
-VALUES ($1, $2)
-ON CONFLICT DO NOTHING;`, id, n); err != nil {
-			return id, err
-		}
 	}
 	return id, nil
 }
@@ -39,9 +28,9 @@ ON CONFLICT DO NOTHING;`, id, n); err != nil {
 func (r *Repository) GetSubscriberByTwitch(ctx context.Context, twitchLogin string) (*entity.NotificationSubscriber, error) {
 	var s entity.NotificationSubscriber
 	err := r.db(ctx).QueryRow(ctx, `
-SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, steam_name, status, created_at, verified_at
+SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, status, created_at, verified_at
 FROM notification_subscribers WHERE twitch_login = $1;`, twitchLogin).Scan(
-		&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID, &s.SteamName,
+		&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID,
 		&s.Status, &s.CreatedAt, &s.VerifiedAt,
 	)
 	if err != nil {
@@ -71,11 +60,9 @@ DELETE FROM notification_subscribers WHERE status = 'pending' AND created_at < n
 	return tag.RowsAffected(), err
 }
 
-// ActiveSubscribers returns all active subscribers with their streamer-level
-// data populated, so notify can self-filter without a DB hit per sample.
-func (r *Repository) ActiveSubscribersWithNames(ctx context.Context) ([]entity.NotificationSubscriber, error) {
+func (r *Repository) ActiveSubscribers(ctx context.Context) ([]entity.NotificationSubscriber, error) {
 	rows, err := r.db(ctx).Query(ctx, `
-SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, steam_name, status, created_at, verified_at
+SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, status, created_at, verified_at
 FROM notification_subscribers WHERE status = 'active'
 ORDER BY id;`)
 	if err != nil {
@@ -86,7 +73,7 @@ ORDER BY id;`)
 	var subs []entity.NotificationSubscriber
 	for rows.Next() {
 		var s entity.NotificationSubscriber
-		if err := rows.Scan(&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID, &s.SteamName,
+		if err := rows.Scan(&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID,
 			&s.Status, &s.CreatedAt, &s.VerifiedAt); err != nil {
 			return nil, err
 		}
@@ -114,14 +101,6 @@ SELECT twitch_login FROM notification_subscribers WHERE status = 'pending';`)
 	}
 	return out, rows.Err()
 }
-
-func (r *Repository) UpdateSteamName(ctx context.Context, subscriberID int64, name string) error {
-	_, err := r.db(ctx).Exec(ctx, `
-UPDATE notification_subscribers SET steam_name = $1 WHERE id = $2;`, name, subscriberID)
-	return err
-}
-
-// --- notification log ---
 
 func (r *Repository) RecentNotification(ctx context.Context, subscriberID int64, detectedName string, cooldown time.Duration) (bool, error) {
 	var exists bool
