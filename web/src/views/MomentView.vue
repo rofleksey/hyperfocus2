@@ -49,6 +49,7 @@ const error = ref<string>("");
 const hasMore = ref(true);
 let offset = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let syncingFromRoute = false;
 
 const snapshots = ref<Snapshot[]>([]);
 const latestSnapshotAt = ref<string>("");
@@ -126,6 +127,7 @@ async function checkLatest() {
 }
 
 function debounceLoad() {
+  if (syncingFromRoute) return;
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(loadFirstPage, 300);
 }
@@ -138,6 +140,7 @@ function setupObserver() {
 }
 
 function syncURL() {
+  if (syncingFromRoute) return;
   const params: Record<string, string | undefined> = {};
   if (at.value) params.at = at.value.toISOString();
   if (survivor.value.trim()) params.survivor = survivor.value.trim();
@@ -148,8 +151,9 @@ function syncURL() {
   router.replace({ query: { ...params } });
 }
 
-// Reset filters when navigating to bare "/"
+// Sync state from URL on navigation (back/forward/first load).
 watch(() => route.fullPath, () => {
+  syncingFromRoute = true;
   if (Object.keys(route.query).length === 0) {
     at.value = new Date();
     survivor.value = "";
@@ -157,7 +161,15 @@ watch(() => route.fullPath, () => {
     language.value = "";
     sort.value = "viewers";
     dir.value = "desc";
+  } else {
+    if (route.query.at) at.value = new Date(route.query.at as string);
+    survivor.value = (route.query.survivor as string) || "";
+    q.value = (route.query.q as string) || "";
+    language.value = (route.query.language as string) || "";
+    sort.value = (route.query.sort as string) || "viewers";
+    dir.value = (route.query.dir as string) || "desc";
   }
+  syncingFromRoute = false;
 });
 
 watch(at, syncURL);
