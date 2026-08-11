@@ -26,7 +26,7 @@ const previewData = ref(makeEmpty());
 const ocrData = ref(makeEmpty());
 
 function makeEmpty() {
-  return { labels: [], datasets: [] as { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] };
+  return { labels: [] as string[], datasets: [] as { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] };
 }
 
 const chartOptions = {
