@@ -134,24 +134,3 @@ func buildOrderBy(sort, dir string) string {
 	// name/login are more natural ascending; default flip handled by caller value.
 	return col + " " + direction
 }
-
-// SamplePreviewFilenames returns preview filenames for a snapshot (unused now,
-// reserved for explicit file pruning if mtime sweep is ever insufficient).
-func (r *Repository) SamplePreviewFilenames(ctx context.Context, snapshotID int64) ([]string, error) {
-	rows, err := r.db(ctx).Query(ctx, `
-SELECT preview_filename FROM stream_samples
-WHERE snapshot_id = $1 AND preview_filename IS NOT NULL;`, snapshotID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var fn string
-		if err := rows.Scan(&fn); err != nil {
-			return nil, err
-		}
-		out = append(out, fn)
-	}
-	return out, rows.Err()
-}

@@ -90,21 +90,3 @@ func (b *BotHelix) ResolveUser(ctx context.Context, login string) (id string, di
 	}
 	return resp.Data.Users[0].ID, resp.Data.Users[0].DisplayName, nil
 }
-
-func (b *BotHelix) SendChatMessage(ctx context.Context, broadcasterID, message string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.helix.SetUserAccessToken(b.token.Get())
-	resp, err := b.helix.SendChatMessage(&helix.SendChatMessageParams{
-		BroadcasterID: broadcasterID,
-		SenderID:      b.botUserID,
-		Message:       message,
-	})
-	if err != nil {
-		return oops.Wrap(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return oops.Errorf("send chat: status %d: %s", resp.StatusCode, resp.ErrorMessage)
-	}
-	return nil
-}

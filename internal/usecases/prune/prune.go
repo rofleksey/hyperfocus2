@@ -16,7 +16,6 @@ import (
 type Repository interface {
 	DeleteSnapshotsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteSessionsEndedBefore(ctx context.Context, cutoff time.Time) (int64, error)
-	DeleteVodsBefore(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteOrphanStreamers(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
@@ -95,10 +94,6 @@ func (p *Pruner) doPrune(ctx context.Context, hours int) error {
 	if err != nil {
 		return err
 	}
-	vods, err := p.repo.DeleteVodsBefore(ctx, cutoff)
-	if err != nil {
-		return err
-	}
 	streamers, err := p.repo.DeleteOrphanStreamers(ctx, cutoff)
 	if err != nil {
 		return err
@@ -108,11 +103,10 @@ func (p *Pruner) doPrune(ctx context.Context, hours int) error {
 		return err
 	}
 
-	if snaps+sess+vods+streamers > 0 || swept > 0 {
+	if snaps+sess+streamers > 0 || swept > 0 {
 		p.log.Info("prune cycle complete",
 			slog.Int64("snapshots", snaps),
 			slog.Int64("sessions", sess),
-			slog.Int64("vods", vods),
 			slog.Int64("streamers", streamers),
 			slog.Int("previews", swept),
 		)

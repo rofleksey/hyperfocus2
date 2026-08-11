@@ -53,24 +53,6 @@ FROM notification_subscribers WHERE twitch_login = $1;`, twitchLogin).Scan(
 	return &s, nil
 }
 
-func (r *Repository) GetSubscriberNames(ctx context.Context, subscriberID int64) ([]string, error) {
-	rows, err := r.db(ctx).Query(ctx, `
-SELECT in_game_name FROM subscriber_names WHERE subscriber_id = $1;`, subscriberID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
-			return nil, err
-		}
-		out = append(out, n)
-	}
-	return out, rows.Err()
-}
-
 func (r *Repository) UpdateSubscriberStatus(ctx context.Context, subscriberID int64, status string) error {
 	_, err := r.db(ctx).Exec(ctx, `
 UPDATE notification_subscribers SET status = $1, verified_at = CASE WHEN $1 = 'active' THEN now() ELSE verified_at END

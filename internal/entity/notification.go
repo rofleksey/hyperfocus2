@@ -14,13 +14,6 @@ type NotificationSubscriber struct {
 	VerifiedAt   *time.Time
 }
 
-type SubscriberName struct {
-	ID           int64
-	SubscriberID int64
-	InGameName   string
-	CreatedAt    time.Time
-}
-
 type NotificationLog struct {
 	ID               int64
 	SubscriberID     int64

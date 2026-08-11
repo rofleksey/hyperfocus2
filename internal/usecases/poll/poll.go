@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -491,38 +492,9 @@ func buildPreviewURL(template string, w, h int) string {
 	if h <= 0 {
 		h = 360
 	}
-	out := strings.ReplaceAll(template, "{width}", itoa(w))
-	out = strings.ReplaceAll(out, "{height}", itoa(h))
+	out := strings.ReplaceAll(template, "{width}", strconv.Itoa(w))
+	out = strings.ReplaceAll(out, "{height}", strconv.Itoa(h))
 	return out
-}
-
-func absDur(d time.Duration) time.Duration {
-	if d < 0 {
-		return -d
-	}
-	return d
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [12]byte
-	pos := len(b)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		pos--
-		b[pos] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		pos--
-		b[pos] = '-'
-	}
-	return string(b[pos:])
 }
 
 func maxAttempts(n int) int {

@@ -1,6 +1,3 @@
-<script setup lang="ts">
-</script>
-
 <template>
   <section class="about-page">
     <h2>About Hyperfocus</h2>

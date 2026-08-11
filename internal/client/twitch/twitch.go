@@ -168,7 +168,6 @@ func mapStream(s helix.Stream) entity.LiveStream {
 		Login:          s.UserLogin,
 		DisplayName:    s.UserName,
 		Title:          s.Title,
-		GameID:         s.GameID,
 		ViewerCount:    s.ViewerCount,
 		Language:       s.Language,
 		StartedAt:      utc(s.StartedAt),

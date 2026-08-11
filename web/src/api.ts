@@ -62,28 +62,6 @@ export function fetchSnapshots(limit = 200, signal?: AbortSignal): Promise<{ dat
   return getJson(`/api/snapshots?limit=${limit}`, signal);
 }
 
-export function fetchStreamers(q: string): Promise<{ data: StreamerSummary[] }> {
-  return getJson(`/api/streamers?q=${encodeURIComponent(q)}&limit=50`);
-}
-
-export interface StreamerSummary {
-  twitch_user_id: string;
-  login: string;
-  display_name: string;
-  profile_image_url?: string;
-}
-
-export interface StreamerSession {
-  id: number;
-  twitch_stream_id: string;
-  started_at: string;
-  ended_at?: string;
-}
-
-export function fetchStreamer(id: string): Promise<{ streamer: StreamerSummary; sessions: StreamerSession[] }> {
-  return getJson(`/api/streamers/${encodeURIComponent(id)}`);
-}
-
 export interface SnapshotStat {
   id: number;
   taken_at: string;
