@@ -1,11 +1,10 @@
 package http
 
 import (
-		"strings"
-
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -39,11 +38,12 @@ func Logging(log *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(sw, r)
 			duration := time.Since(start)
 
-		if r.Method == http.MethodGet &&
-			(sw.status == http.StatusOK || sw.status == http.StatusPartialContent) &&
-			(r.URL.Path == "/api/healthz" || strings.HasPrefix(r.URL.Path, "/previews/")) {
-			return
-		}
+			// Skip logging for healthy GET noise (health checks, static previews).
+			if r.Method == http.MethodGet &&
+				(sw.status == http.StatusOK || sw.status == http.StatusPartialContent) &&
+				(r.URL.Path == "/api/healthz" || strings.HasPrefix(r.URL.Path, "/previews/")) {
+				return
+			}
 			log.Info("http",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -75,22 +75,7 @@ func Recover(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// CORS adds permissive headers (dev-friendly; the SPA is same-origin in prod).
-func CORS() func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			h := w.Header()
-			h.Set("Access-Control-Allow-Origin", "*")
-			h.Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Content-Type")
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
+
 
 // Chain composes middlewares left-to-right (first listed runs outermost).
 func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {

@@ -5,3 +5,8 @@ config.yaml
 web/node_modules/
 web/dist/
 .env
+*.pem
+*.key
+*.p12
+.env*
+secrets/

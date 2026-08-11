@@ -244,10 +244,10 @@ onUnmounted(() => {
     <div v-if="allStreams.length" class="gallery-grid">
       <div v-for="stream in allStreams" :key="stream.streamer_id" class="gallery-item">
         <div class="gallery-headline">
-          <a class="gallery-name" :href="streamLink(stream)" target="_blank" :title="stream.display_name">{{ stream.display_name }}</a>
+          <a class="gallery-name" :href="streamLink(stream)" rel="noopener noreferrer" target="_blank" :title="stream.display_name">{{ stream.display_name }}</a>
           <span v-if="survivorSearchActive && stream.fuzzy_score != null" class="score-badge" :style="scoreColor(stream)" :title="'match: ' + scorePct(stream)">{{ scorePct(stream) }}</span>
         </div>
-        <a class="gallery-thumb-link" :href="streamLink(stream)" target="_blank">
+        <a class="gallery-thumb-link" :href="streamLink(stream)" rel="noopener noreferrer" target="_blank">
           <img v-if="stream.thumb_url || stream.preview_url" class="gallery-thumb" :src="stream.thumb_url || stream.preview_url" :alt="stream.display_name" loading="lazy" />
           <span v-else class="muted">No preview</span>
         </a>

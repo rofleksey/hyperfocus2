@@ -30,7 +30,6 @@ func New(logger *slog.Logger, apiDeps httpHandlers.Deps, cfg Config) *http.Serve
 	mux.Handle("/", frontendHandler())
 
 	handler := httpHandlers.Chain(mux,
-		httpHandlers.CORS(),
 		httpHandlers.Recover(logger),
 		httpHandlers.Logging(logger),
 	)
@@ -42,6 +41,7 @@ func New(logger *slog.Logger, apiDeps httpHandlers.Deps, cfg Config) *http.Serve
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 16,
 	}
 }
 
@@ -50,7 +50,6 @@ func New(logger *slog.Logger, apiDeps httpHandlers.Deps, cfg Config) *http.Serve
 func frontendHandler() http.Handler {
 	sub, err := fs.Sub(web.Dist, "dist")
 	if err != nil {
-		// Should never happen given the embedded dist always exists.
 		panic("server: cannot sub embedded dist: " + err.Error())
 	}
 	fileServer := http.FileServer(http.FS(sub))

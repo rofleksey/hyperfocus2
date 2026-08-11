@@ -35,12 +35,12 @@
     <div class="about-links">
       <RouterLink to="/privacy">Privacy Policy</RouterLink>
       <RouterLink to="/terms">Terms of Service</RouterLink>
-      <a href="https://github.com/rofleksey/hyperfocus2" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/rofleksey/hyperfocus2" target="_blank" rel="noopener noreferrer">GitHub</a>
     </div>
 
     <div class="about-footer">
       &copy; {{ new Date().getFullYear() }} &mdash; Made by
-      <a href="https://github.com/rofleksey" target="_blank" rel="noopener">@rofleksey</a>
+      <a href="https://github.com/rofleksey" target="_blank" rel="noopener noreferrer">@rofleksey</a>
     </div>
   </section>
 </template>

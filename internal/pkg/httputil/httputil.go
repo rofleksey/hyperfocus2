@@ -24,9 +24,11 @@ func Problem(w http.ResponseWriter, status int, title string) {
 	})
 }
 
-// DecodeJSON decodes a JSON request body into dst. It limits the read to 1 MiB.
-func DecodeJSON(r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
+// DecodeJSON decodes a JSON request body into dst. It limits the read to 1 MiB
+// and rejects unknown fields. The ResponseWriter is used by MaxBytesReader to
+// properly close the connection on overflow.
+func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	return dec.Decode(dst)

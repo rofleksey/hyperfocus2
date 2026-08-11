@@ -34,4 +34,4 @@ clean:
 	rm -rf bin web/dist web/node_modules
 
 docker:
-	docker build -t hyperfocus:$(VERSION) .
+	docker build --build-arg VERSION=$(VERSION) -t rofleksey/hyperfocus2:$(VERSION) .

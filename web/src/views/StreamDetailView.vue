@@ -77,7 +77,7 @@ onMounted(load);
         </div>
 
         <div class="detail-links">
-          <a :href="`https://twitch.tv/${stream.login}`" target="_blank" rel="noopener" class="link-btn">Watch on Twitch</a>
+          <a :href="`https://twitch.tv/${stream.login}`" target="_blank" rel="noopener noreferrer" class="link-btn">Watch on Twitch</a>
         </div>
       </div>
     </template>

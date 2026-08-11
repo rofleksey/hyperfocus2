@@ -6,3 +6,16 @@ web/node_modules/
 web/dist/
 config.yaml
 *.local.yaml
+README.md
+screenshot.png
+*.md
+Makefile
+.golangci.yaml
+.editorconfig
+scripts/
+*.pem
+*.key
+*.p12
+.env*
+secrets/
+CLEANUP.md
