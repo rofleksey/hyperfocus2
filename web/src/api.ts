@@ -29,8 +29,8 @@ export interface MomentResponse {
   streams: Stream[];
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`request failed: ${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
@@ -44,6 +44,7 @@ export function fetchMoment(
   dir: string,
   offset = 0,
   limit = 100,
+  signal?: AbortSignal,
 ): Promise<MomentResponse> {
   const p = new URLSearchParams();
   if (at) p.set("at", at);
@@ -54,11 +55,11 @@ export function fetchMoment(
   if (dir) p.set("dir", dir);
   p.set("offset", String(offset));
   p.set("limit", String(limit));
-  return getJson<MomentResponse>(`/api/moments?${p.toString()}`);
+  return getJson<MomentResponse>(`/api/moments?${p.toString()}`, signal);
 }
 
-export function fetchSnapshots(limit = 200): Promise<{ data: Snapshot[] }> {
-  return getJson(`/api/snapshots?limit=${limit}`);
+export function fetchSnapshots(limit = 200, signal?: AbortSignal): Promise<{ data: Snapshot[] }> {
+  return getJson(`/api/snapshots?limit=${limit}`, signal);
 }
 
 export function fetchStreamers(q: string): Promise<{ data: StreamerSummary[] }> {
@@ -98,9 +99,9 @@ export function fetchStats(n = 100): Promise<{ snapshots: SnapshotStat[] }> {
   return getJson(`/api/stats?n=${n}`);
 }
 
-export function fetchSample(streamerId: string, at?: string): Promise<Stream> {
+export function fetchSample(streamerId: string, at?: string, signal?: AbortSignal): Promise<Stream> {
   const p = new URLSearchParams();
   p.set("streamer_id", streamerId);
   if (at) p.set("at", at);
-  return getJson<Stream>(`/api/sample?${p.toString()}`);
+  return getJson<Stream>(`/api/sample?${p.toString()}`, signal);
 }

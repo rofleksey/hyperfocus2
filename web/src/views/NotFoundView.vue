@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from "vue-router";
 </script>
 
 <template>
@@ -6,7 +7,7 @@
     <h1>No such page</h1>
     <p class="sub">Skill issue.</p>
     <img src="/skill-issue.gif" alt="skill issue" class="gif" />
-    <p><a href="/" class="back-link">&larr; Back</a></p>
+    <p><RouterLink to="/" class="back-link">&larr; Back to home</RouterLink></p>
   </section>
 </template>
 

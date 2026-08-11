@@ -31,7 +31,10 @@ async function load() {
   }
 }
 
-watch(() => props.streamer_id ?? route.params.streamer_id as string, () => load());
+watch(
+  () => [props.streamer_id, route.query.at] as const,
+  () => load(),
+);
 onMounted(load);
 </script>
 
