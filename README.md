@@ -89,4 +89,4 @@ prune:
 ## Related
 
 - [hyperfocus2-ocr](https://github.com/rofleksey/hyperfocus2-ocr) — OCR microservice for survivor name extraction
-- Live at **[hf.k0per1s.com](https://hf.k0per1s.com)**
+- Live at **[hyperfocusdbd.com](https://hyperfocusdbd.com)**
