@@ -56,7 +56,7 @@ async function subscribe() {
   <section class="subscribe-page">
     <h2>Notifications</h2>
     <p class="desc">
-      Get notified in your Twitch chat when other players are detected in your DBD games.
+      Get a heads-up in your Twitch chat when your Steam name is spotted in another streamer's DBD lobby.
     </p>
 
     <div class="form">
@@ -94,7 +94,7 @@ async function subscribe() {
         <li>Enter your Twitch username and Steam profile URL.</li>
         <li>Submit — the bot will message you in your Twitch chat.</li>
         <li>Type <code>!hyperfocussub</code> in <strong>your own</strong> Twitch chat to verify.</li>
-        <li>Done! You'll get notified when other tracked players appear in a lobby with you.</li>
+        <li>Done! When your Steam name is spotted in another streamer's lobby, the bot pings you with their Twitch username.</li>
       </ol>
       <p class="note">Your Steam display name is kept in sync automatically. Unverified subscriptions expire after 24 hours. Type <code>!hyperfocusunsub</code> in your chat to unsubscribe anytime.</p>
     </div>

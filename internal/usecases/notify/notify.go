@@ -82,40 +82,45 @@ func (s *Service) ProcessSnapshot(ctx context.Context, snapID int64, samples []e
 	}
 
 	for _, sample := range samples {
-		for _, survivor := range sample.SurvivorNames {
-			for _, sub := range subs {
-				if sub.TwitchUserID == sample.StreamerID {
-					continue
-				}
-				names, ok := matchNames[sub.ID]
-				if !ok {
-					continue
-				}
-				for _, name := range names {
-					score := fuzzy.Score(name, survivor)
-					if score < s.cfg.MinScore {
-						continue
+		if sample.StreamerLogin == "" {
+			continue
+		}
+		for _, sub := range subs {
+			if sub.TwitchUserID == sample.StreamerID {
+				continue
+			}
+			names, ok := matchNames[sub.ID]
+			if !ok {
+				continue
+			}
+			best := 0.0
+			for _, name := range names {
+				for _, survivor := range sample.SurvivorNames {
+					if score := fuzzy.Score(name, survivor); score > best {
+						best = score
 					}
-					recent, err := s.repo.RecentNotification(ctx, sub.ID, name, s.cfg.Cooldown.Std())
-					if err != nil {
-						s.log.Warn("notify: dedup check failed", slog.Any("error", err))
-						continue
-					}
-					if recent {
-						continue
-					}
-					msg := fmt.Sprintf("Player '%s' detected in your game (%.0f%% match)", survivor, score*100)
-					s.irc.Send(sub.TwitchLogin, msg)
-					if err := s.repo.LogNotification(ctx, sub.ID, name, score, snapID, sample.StreamerID); err != nil {
-						s.log.Warn("notify: log failed", slog.Any("error", err))
-					}
-					s.log.Info("notify: sent",
-						slog.String("to", sub.TwitchLogin),
-						slog.String("detected", survivor),
-						slog.Float64("score", score))
-					break
 				}
 			}
+			if best < s.cfg.MinScore {
+				continue
+			}
+			recent, err := s.repo.RecentNotification(ctx, sub.ID, sample.StreamerLogin, s.cfg.Cooldown.Std())
+			if err != nil {
+				s.log.Warn("notify: dedup check failed", slog.Any("error", err))
+				continue
+			}
+			if recent {
+				continue
+			}
+			msg := fmt.Sprintf("You might be playing with @%s", sample.StreamerLogin)
+			s.irc.Send(sub.TwitchLogin, msg)
+			if err := s.repo.LogNotification(ctx, sub.ID, sample.StreamerLogin, best, snapID, sample.StreamerID); err != nil {
+				s.log.Warn("notify: log failed", slog.Any("error", err))
+			}
+			s.log.Info("notify: sent",
+				slog.String("to", sub.TwitchLogin),
+				slog.String("streamer", sample.StreamerLogin),
+				slog.Float64("score", best))
 		}
 	}
 }

@@ -185,7 +185,7 @@ func (h *SubscribeHandler) HandleIRCCommand(ctx context.Context, cmd twitch.IRCC
 			h.log.Error("subscribe: verify failed", slog.Any("error", err))
 			return
 		}
-		h.irc.Send(cmd.Channel, "Verified! You'll be notified when other players are detected in your DBD games.")
+		h.irc.Send(cmd.Channel, "Verified! You'll get a heads-up when you might be playing with another streamer.")
 		h.log.Info("subscribe: verified", slog.String("twitch", cmd.SenderLogin))
 
 	case "!hyperfocusunsub":

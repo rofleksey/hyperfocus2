@@ -54,7 +54,7 @@ ocr:
 notify:
   enabled: false            # set true to enable the notification bot
   min_score: 0.60           # minimum fuzzy-match score for a player-name detection
-  cooldown: "30m"           # minimum time between notifications for the same player
+  cooldown: "30m"           # minimum time between notifications for the same streamer
 
 # Optional: Steam API integration for persona name resolution.
 steam:

@@ -9,6 +9,7 @@ type StreamSample struct {
 	SnapshotID       int64
 	SessionID        int64
 	StreamerID       string
+	StreamerLogin    string
 	ViewerCount      int
 	Title            string
 	Language         string

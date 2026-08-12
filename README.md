@@ -17,7 +17,7 @@ Hyperfocus tracks every active [Dead by Daylight](https://store.steampowered.com
 - **Fuzzy search** — search by streamer name, language, or survivor in-game name with a loose matcher that tolerates OCR recognition errors
 - **Streamer detail** — click any streamer to see their sample at that moment: preview, viewer count, title, tags, and OCR survivor names
 - **Stats charts** — line charts for streams online, total viewers, cycle time, disk usage, preview capture rate, and OCR success rate over time
-- **Notifications** — optional Twitch chat bot that notifies streamers when a tracked player appears in their lobby
+- **Notifications** — optional Twitch chat bot that pings you when your name is spotted in another streamer's lobby
 - **No accounts, no cookies** — built with Vue 3 + PrimeVue, dark theme, responsive
 
 ## Architecture
