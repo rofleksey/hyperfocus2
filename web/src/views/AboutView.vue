@@ -20,14 +20,25 @@
 
     <ul>
       <li>Twitch's API is polled continuously — each cycle fetches all live
-          Dead by Daylight streams and downloads a preview thumbnail from each.</li>
+          Dead by Daylight streams and downloads a 1080p preview thumbnail from
+          each (falling back to 720p when unavailable).</li>
       <li>Previews are processed by an OCR engine that reads the four survivor
           names from the bottom-left HUD panel.</li>
-      <li>Snapshots are kept for a rolling window (currently 6 hours) and
+      <li>Snapshots are kept for a rolling window (currently 3 hours) and
           automatically pruned every hour.</li>
-      <li>No user data is collected — there are no accounts, no cookies beyond
-          what the router needs, and nothing is tracked.</li>
+      <li>Optional notifications: subscribe with your Twitch login and Steam
+          profile (verified with a chat command) and the bot pings you whenever
+          your Steam name is spotted in another streamer's lobby.</li>
+      <li>There are no accounts and no cookies — the only data kept is what
+          you submit when subscribing to notifications.</li>
     </ul>
+
+    <p>
+      Hyperfocus is an independent fan project. It is not affiliated with,
+      endorsed by, or sponsored by Twitch Interactive, Valve Corporation, or
+      Behaviour Interactive. Dead by Daylight, Steam, Twitch, and all related
+      trademarks and content belong to their respective owners.
+    </p>
 
     <div class="about-links">
       <RouterLink to="/privacy">Privacy Policy</RouterLink>

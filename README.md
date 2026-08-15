@@ -13,11 +13,11 @@ Hyperfocus tracks every active [Dead by Daylight](https://store.steampowered.com
 - **Live polling** — continuously fetches all DBD streams from Twitch (~2000 per cycle) in a back-to-back poll loop
 - **Historical snapshots** — navigate back in time with prev/next buttons, a datetime picker, or a "Now" button with new-data indicator
 - **Thumbnail gallery** — responsive grid of 16:9 stream previews with viewer counts, relevance scores, and infinite scroll
-- **OCR survivor names** — extracts the 4 player names from the bottom-left HUD of each stream's preview using [PaddleOCR on ONNX Runtime](https://github.com/rofleksey/hyperfocus2-ocr)
+- **OCR survivor names** — extracts the 4 player names from the bottom-left HUD of each stream's 1080p preview (720p fallback) using [PaddleOCR on ONNX Runtime](https://github.com/rofleksey/hyperfocus2-ocr)
 - **Fuzzy search** — search by streamer name, language, or survivor in-game name with a loose matcher that tolerates OCR recognition errors
 - **Streamer detail** — click any streamer to see their sample at that moment: preview, viewer count, title, tags, and OCR survivor names
 - **Stats charts** — line charts for streams online, total viewers, cycle time, disk usage, preview capture rate, and OCR success rate over time
-- **Notifications** — optional Twitch chat bot that pings you when your name is spotted in another streamer's lobby
+- **Notifications** — optional Twitch chat bot that matches your Steam name against survivors in other streamers' lobbies and pings you on a hit
 - **No accounts, no cookies** — built with Vue 3 + PrimeVue, dark theme, responsive
 
 ## Architecture
@@ -68,6 +68,10 @@ The embedded Vue SPA is served on `:8080`. Migrations run automatically.
 
 ## Config
 
+Preview sizes are fixed: full previews are fetched as 1920×1080 with a
+1280×720 fallback, gallery thumbnails as 480×270. All other knobs live in
+YAML:
+
 ```yaml
 service:
   http_addr: ":8080"
@@ -88,11 +92,26 @@ ocr:
 
 notify:
   enabled: false                     # optional chat notifications
+  workers: 2                         # subscriptions processed in parallel
+
+steam:
+  api_key: "..."                     # Steam Web API key (notifications)
+  retries: 1                         # retries for Steam API calls
 
 prune:
   interval: "1h"
   hours: 72                          # data retention window (default)
 ```
+
+## Disclaimer
+
+Hyperfocus is an independent fan project. It is not affiliated with,
+endorsed by, or sponsored by Twitch Interactive, Valve Corporation,
+Behaviour Interactive, or their partners. "Dead by Daylight" and related
+trademarks, logos, and game content belong to Behaviour Interactive; Steam
+and related marks belong to Valve; Twitch and related marks belong to Twitch
+Interactive. The project respects their rights and complies with the
+respective API terms.
 
 ## Related
 

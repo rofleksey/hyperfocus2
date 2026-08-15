@@ -5,9 +5,14 @@
 
     <h3>1. Data Collection</h3>
     <p>
-      Hyperfocus does not collect, store, or transmit any personal information
-      about its users. The application does not use cookies, tracking scripts,
-      analytics, or any form of user fingerprinting.
+      Hyperfocus does not use cookies, tracking scripts, analytics, or any
+      form of user fingerprinting. No accounts are required to browse the
+      site.
+    </p>
+    <p>
+      The only personal data stored is what you submit yourself when
+      subscribing to the notification bot: your Twitch login, your Steam
+      profile URL, and the Steam ID and display name resolved from it.
     </p>
 
     <h3>2. Twitch Data</h3>
@@ -15,33 +20,35 @@
       Hyperfocus polls the public Twitch Helix API exclusively to discover which
       broadcasters are currently live for a configured game category. The data
       retrieved — streamer display names, viewer counts, stream titles, languages,
-      tags, and publicly available preview thumbnail URLs — is stored in your own
+      tags, and publicly available preview thumbnail URLs — is stored in a
       PostgreSQL database and is never shared with any third party.
     </p>
 
     <h3>3. Data Storage and Retention</h3>
     <p>
-      All data is stored locally on infrastructure you control. Preview thumbnail
-      images are saved to disk. A configurable retention window (default: 3 days)
-      automatically deletes snapshots, session records, VOD references, and
-      associated image files. You may adjust or disable retention at any time via
+      Stream history (snapshots, sessions, samples) and preview thumbnail images
+      are kept for a rolling retention window — 3 hours on the hosted instance —
+      and automatically pruned. Subscription records are kept until you
+      unsubscribe via the chat command; they are deleted immediately when you
+      do. You may adjust or disable retention entirely when self-hosting via
       the configuration file.
     </p>
 
     <h3>4. Third-Party Services</h3>
     <p>
-      The only external service contacted is the Twitch Helix API, which is
-      queried on a configurable interval to obtain live-stream data. No other
-      external services are contacted. No analytics, crash reporting, or
-      monitoring services are integrated.
+      Two external services are contacted: the Twitch Helix API (live-stream
+      discovery) and, for notification subscribers only, the Steam Web API
+      (resolving the persona name behind your Steam profile). No analytics,
+      crash reporting, or monitoring services are integrated.
     </p>
 
     <h3>5. Your Rights</h3>
     <p>
-      Since Hyperfocus does not collect personal data about its users, there is no
-      user data to access, rectify, or delete. All stored data pertains to public
-      Twitch stream information and can be deleted at any time by clearing the
-      database and the local data directory.
+      Browsing the site leaves no user data behind. If you subscribed to
+      notifications, all records tied to your subscription (Twitch login,
+      Steam URL, resolved Steam name, notification history) are deleted the
+      moment you run the unsubscribe chat command — or by contacting the
+      operator to clear your data.
     </p>
 
     <h3>6. Changes to This Policy</h3>
