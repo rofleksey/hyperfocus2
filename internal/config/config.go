@@ -50,16 +50,12 @@ type Twitch struct {
 }
 
 type Poll struct {
-	PageSize           int      `yaml:"page_size"`
-	PageDelay          Duration `yaml:"page_delay"`
-	PreviewWidth       int      `yaml:"preview_width"`
-	PreviewHeight      int      `yaml:"preview_height"`
-	ThumbPreviewWidth  int      `yaml:"thumb_preview_width"`
-	ThumbPreviewHeight int      `yaml:"thumb_preview_height"`
-	PreviewWorkers     int      `yaml:"preview_workers"`
-	PreviewTimeout     Duration `yaml:"preview_timeout"`
-	FetchMaxAttempts   int      `yaml:"fetch_max_attempts"`
-	FetchDelay         Duration `yaml:"fetch_delay"`
+	PageSize         int      `yaml:"page_size"`
+	PageDelay        Duration `yaml:"page_delay"`
+	PreviewWorkers   int      `yaml:"preview_workers"`
+	PreviewTimeout   Duration `yaml:"preview_timeout"`
+	FetchMaxAttempts int      `yaml:"fetch_max_attempts"`
+	FetchDelay       Duration `yaml:"fetch_delay"`
 }
 
 type Prune struct {
@@ -105,12 +101,16 @@ type TwitchBot struct {
 }
 
 func (t TwitchBot) ClientIDor(parent string) string {
-	if t.ClientID != "" { return t.ClientID }
+	if t.ClientID != "" {
+		return t.ClientID
+	}
 	return parent
 }
 
 func (t TwitchBot) ClientSecretOr(parent string) string {
-	if t.ClientSecret != "" { return t.ClientSecret }
+	if t.ClientSecret != "" {
+		return t.ClientSecret
+	}
 	return parent
 }
 
@@ -204,10 +204,6 @@ func applyDefaults(c *Config) {
 	if c.Poll.PageDelay == 0 {
 		c.Poll.PageDelay = Duration(time.Second)
 	}
-	set(&c.Poll.PreviewWidth, 1280)
-	set(&c.Poll.PreviewHeight, 720)
-	set(&c.Poll.ThumbPreviewWidth, 480)
-	set(&c.Poll.ThumbPreviewHeight, 270)
 	set(&c.Poll.PreviewWorkers, 16)
 	if c.Poll.PreviewTimeout == 0 {
 		c.Poll.PreviewTimeout = Duration(10 * time.Second)

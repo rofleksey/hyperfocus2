@@ -305,6 +305,7 @@ func (p *Poll) doPoll(ctx context.Context) error {
 
 	return nil
 }
+
 // ---------------------------------------------------------------------------
 // fetchWithRetry
 // ---------------------------------------------------------------------------
@@ -436,12 +437,22 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 
 			sem <- struct{}{}
 
-			// Preview — full resolution (for OCR + modal).
-			previewURL := buildPreviewURL(r.stream.ThumbnailURL, p.cfg.PreviewWidth, p.cfg.PreviewHeight)
+			// Preview — full resolution (for OCR + modal). 1080p is the
+			// default; if the CDN has no 1080p rendition, fall back to 720p.
+			previewURL := buildPreviewURL(r.stream.ThumbnailURL, previewWidth, previewHeight)
 			if previewURL != "" {
 				fctx, cancel := context.WithTimeout(ctx, p.cfg.PreviewTimeout.Std())
 				fn, err := p.prev.FetchAndSave(fctx, previewURL)
 				cancel()
+				if err != nil {
+					fallbackURL := buildPreviewURL(r.stream.ThumbnailURL, previewFallbackWidth, previewFallbackHeight)
+					p.log.Debug("poll: preview failed, falling back to 720p",
+						slog.String("login", r.stream.Login),
+						slog.Any("error", err))
+					fctx, cancel = context.WithTimeout(ctx, p.cfg.PreviewTimeout.Std())
+					fn, err = p.prev.FetchAndSave(fctx, fallbackURL)
+					cancel()
+				}
 				if err != nil {
 					p.log.Warn("poll: preview failed",
 						slog.String("login", r.stream.Login),
@@ -457,7 +468,7 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 
 			// Thumb — low resolution (for gallery grid).
 			if r.previewFile != "" {
-				thumbURL := buildPreviewURL(r.stream.ThumbnailURL, p.cfg.ThumbPreviewWidth, p.cfg.ThumbPreviewHeight)
+				thumbURL := buildPreviewURL(r.stream.ThumbnailURL, thumbPreviewWidth, thumbPreviewHeight)
 				if thumbURL != "" {
 					tctx, cancel := context.WithTimeout(ctx, p.cfg.PreviewTimeout.Std())
 					tn, err := p.prev.FetchAndSave(tctx, thumbURL)
@@ -482,6 +493,17 @@ func (p *Poll) captureAll(ctx context.Context, results []streamResult, ocrPaths 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Preview dimensions are hardcoded: Twitch always renders these thumbnail
+// sizes. The OCR microservice accepts both 1080p and 720p previews.
+const (
+	previewWidth          = 1920
+	previewHeight         = 1080
+	previewFallbackWidth  = 1280
+	previewFallbackHeight = 720
+	thumbPreviewWidth     = 480
+	thumbPreviewHeight    = 270
+)
 
 func buildPreviewURL(template string, w, h int) string {
 	template = strings.TrimSpace(template)

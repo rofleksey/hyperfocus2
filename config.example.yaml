@@ -28,14 +28,13 @@ twitch_bot:
 poll:
   page_size: 100
   page_delay: "1s"
-  preview_width: 640
-  preview_height: 360
-  thumb_preview_width: 480
-  thumb_preview_height: 270
   preview_workers: 16
   preview_timeout: "10s"
   fetch_max_attempts: 3
   fetch_delay: "2s"
+
+# Preview sizes are hardcoded: full previews are 1920x1080 (720p fallback),
+# gallery thumbnails 480x270.
 
 prune:
   interval: "1h"
