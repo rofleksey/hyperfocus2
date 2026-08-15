@@ -21,19 +21,20 @@ type SubscribeRepo interface {
 	InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber) (int64, error)
 	UpdateSubscriberStatus(ctx context.Context, subscriberID int64, status string) error
 	DeleteSubscriber(ctx context.Context, subscriberID int64) error
+	UpdateSteamNames(ctx context.Context, names map[int64]string) error
 }
 
 type SubscribeHandler struct {
-	log        *slog.Logger
-	repo       SubscribeRepo
-	botHelix   *twitch.BotHelix
-	irc        *twitch.IRCBot
-	notifyCfg  config.Notify
-	steamKey   string
+	log       *slog.Logger
+	repo      SubscribeRepo
+	botHelix  *twitch.BotHelix
+	irc       *twitch.IRCBot
+	notifyCfg config.Notify
+	steamCfg  config.Steam
 }
 
-func NewSubscribeHandler(log *slog.Logger, repo SubscribeRepo, botHelix *twitch.BotHelix, irc *twitch.IRCBot, notifyCfg config.Notify, steamKey string) *SubscribeHandler {
-	return &SubscribeHandler{log: log, repo: repo, botHelix: botHelix, irc: irc, notifyCfg: notifyCfg, steamKey: steamKey}
+func NewSubscribeHandler(log *slog.Logger, repo SubscribeRepo, botHelix *twitch.BotHelix, irc *twitch.IRCBot, notifyCfg config.Notify, steamCfg config.Steam) *SubscribeHandler {
+	return &SubscribeHandler{log: log, repo: repo, botHelix: botHelix, irc: irc, notifyCfg: notifyCfg, steamCfg: steamCfg}
 }
 
 type subscribeRequest struct {
@@ -77,8 +78,8 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 
 	existing, err := h.repo.GetSubscriberByTwitch(r.Context(), req.TwitchLogin)
 	if err == nil && existing != nil {
-		// Fetch Steam name on the fly for the response.
-		steamName := h.fetchSteamName(r.Context(), existing.SteamID)
+		// Fetch Steam name on the fly for the response (and persist it).
+		steamName := h.fetchSteamName(r.Context(), existing)
 		httputil.JSON(w, http.StatusConflict, subscribeResponse{
 			Status:    existing.Status,
 			SteamName: steamName,
@@ -100,21 +101,24 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if h.steamKey != "" {
-		sc := steam.NewClient(h.steamKey, h.log)
+	if h.steamCfg.APIKey != "" {
+		sc := steam.NewClient(h.steamCfg.APIKey, h.log, h.steamCfg.Retries)
 		resolved, err := sc.ResolveVanity(r.Context(), steamID)
 		if err == nil {
 			steamID = resolved
 		}
 	}
 
-	steamName := h.fetchSteamName(r.Context(), steamID)
+	steamName, nameOK := h.resolveSteamName(r.Context(), steamID)
 
 	sub := entity.NotificationSubscriber{
 		TwitchLogin:  req.TwitchLogin,
 		TwitchUserID: twitchUserID,
 		SteamURL:     req.SteamURL,
 		SteamID:      steamID,
+	}
+	if nameOK {
+		sub.SteamName = steamName
 	}
 
 	id, err := h.repo.InsertSubscriber(r.Context(), sub)
@@ -134,7 +138,7 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 	h.log.Info("subscribe: new subscriber", slog.Int64("id", id), slog.String("twitch", req.TwitchLogin), slog.String("steam_id", steamID))
 
 	h.irc.Join(req.TwitchLogin)
-	h.irc.Send(req.TwitchLogin, "Subscription request received! Type !hyperfocussub in your chat to verify ownership.")
+	h.irc.Send(r.Context(), req.TwitchLogin, "Subscription request received! Type !hyperfocussub in your chat to verify ownership.")
 
 	httputil.JSON(w, http.StatusCreated, subscribeResponse{
 		Status:    "pending",
@@ -143,15 +147,40 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func (h *SubscribeHandler) fetchSteamName(ctx context.Context, steamID string) string {
-	if h.steamKey == "" || steamID == "" {
-		return steamID
+// resolveSteamName fetches the current persona name for a SteamID. It returns
+// (name, true) on a successful API call; on failure it returns (steamID,
+// false) so the caller can still display something without persisting a bogus
+// name.
+func (h *SubscribeHandler) resolveSteamName(ctx context.Context, steamID string) (string, bool) {
+	if h.steamCfg.APIKey == "" || steamID == "" {
+		return steamID, false
 	}
-	sc := steam.NewClient(h.steamKey, h.log)
+	sc := steam.NewClient(h.steamCfg.APIKey, h.log, h.steamCfg.Retries)
 	if name, err := sc.RefreshName(ctx, steamID); err == nil {
+		return name, true
+	}
+	return steamID, false
+}
+
+// fetchSteamName resolves and persists the Steam name for an existing
+// subscriber. On success the fresh name is stored in the database (so it can
+// serve as a fallback later) and returned; on failure the stored name or the
+// raw SteamID is returned.
+func (h *SubscribeHandler) fetchSteamName(ctx context.Context, sub *entity.NotificationSubscriber) string {
+	if h.steamCfg.APIKey == "" || sub.SteamID == "" {
+		return sub.SteamID
+	}
+	sc := steam.NewClient(h.steamCfg.APIKey, h.log, h.steamCfg.Retries)
+	if name, err := sc.RefreshName(ctx, sub.SteamID); err == nil {
+		if err := h.repo.UpdateSteamNames(ctx, map[int64]string{sub.ID: name}); err != nil {
+			h.log.Warn("subscribe: failed to store steam name", slog.Any("error", err))
+		}
 		return name
 	}
-	return steamID
+	if sub.SteamName != "" {
+		return sub.SteamName
+	}
+	return sub.SteamID
 }
 
 func (h *SubscribeHandler) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +194,7 @@ func (h *SubscribeHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 		httputil.JSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	httputil.JSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: h.fetchSteamName(r.Context(), sub.SteamID)})
+	httputil.JSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: h.fetchSteamName(r.Context(), sub)})
 }
 
 // HandleIRCCommand processes !hyperfocussub / !hyperfocusunsub from the IRC bot.
@@ -178,14 +207,14 @@ func (h *SubscribeHandler) HandleIRCCommand(ctx context.Context, cmd twitch.IRCC
 			return
 		}
 		if sub.Status == "active" {
-			h.irc.Send(cmd.Channel, "You are already subscribed!")
+			h.irc.Send(ctx, cmd.Channel, "You are already subscribed!")
 			return
 		}
 		if err := h.repo.UpdateSubscriberStatus(ctx, sub.ID, "active"); err != nil {
 			h.log.Error("subscribe: verify failed", slog.Any("error", err))
 			return
 		}
-		h.irc.Send(cmd.Channel, "Verified! You'll get a heads-up when you might be playing with another streamer.")
+		h.irc.Send(ctx, cmd.Channel, "Verified! You'll get a heads-up when you might be playing with another streamer.")
 		h.log.Info("subscribe: verified", slog.String("twitch", cmd.SenderLogin))
 
 	case "!hyperfocusunsub":
@@ -198,8 +227,7 @@ func (h *SubscribeHandler) HandleIRCCommand(ctx context.Context, cmd twitch.IRCC
 			return
 		}
 		h.irc.Part(cmd.Channel)
-		h.irc.Send(cmd.Channel, "You have been unsubscribed from hyperfocus notifications.")
+		h.irc.Send(ctx, cmd.Channel, "You have been unsubscribed from hyperfocus notifications.")
 		h.log.Info("subscribe: unsubscribed", slog.String("twitch", cmd.SenderLogin))
 	}
 }
-

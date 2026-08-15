@@ -54,11 +54,13 @@ notify:
   enabled: false            # set true to enable the notification bot
   min_score: 0.60           # minimum fuzzy-match score for a player-name detection
   cooldown: "30m"           # minimum time between notifications for the same streamer
+  workers: 2                # subscriptions processed in parallel per snapshot
 
 # Optional: Steam API integration for persona name resolution.
 steam:
   api_key: ""               # Steam Web API key
   refresh_every: "30m"      # how often to refresh Steam persona names
+  retries: 1                # retries for Steam API calls (timeouts etc.)
 
 log:
   level: "info"           # debug | info | warn | error

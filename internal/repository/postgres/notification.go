@@ -14,10 +14,10 @@ import (
 func (r *Repository) InsertSubscriber(ctx context.Context, sub entity.NotificationSubscriber) (int64, error) {
 	var id int64
 	err := r.db(ctx).QueryRow(ctx, `
-INSERT INTO notification_subscribers (twitch_login, twitch_user_id, steam_url, steam_id, status)
-VALUES ($1, $2, $3, $4, 'pending')
+INSERT INTO notification_subscribers (twitch_login, twitch_user_id, steam_url, steam_id, steam_name, status)
+VALUES ($1, $2, $3, $4, $5, 'pending')
 RETURNING id;`,
-		sub.TwitchLogin, sub.TwitchUserID, sub.SteamURL, sub.SteamID,
+		sub.TwitchLogin, sub.TwitchUserID, sub.SteamURL, sub.SteamID, sub.SteamName,
 	).Scan(&id)
 	if err != nil {
 		return 0, err
@@ -28,9 +28,9 @@ RETURNING id;`,
 func (r *Repository) GetSubscriberByTwitch(ctx context.Context, twitchLogin string) (*entity.NotificationSubscriber, error) {
 	var s entity.NotificationSubscriber
 	err := r.db(ctx).QueryRow(ctx, `
-SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, status, created_at, verified_at
+SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, steam_name, status, created_at, verified_at
 FROM notification_subscribers WHERE twitch_login = $1;`, twitchLogin).Scan(
-		&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID,
+		&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID, &s.SteamName,
 		&s.Status, &s.CreatedAt, &s.VerifiedAt,
 	)
 	if err != nil {
@@ -62,7 +62,7 @@ DELETE FROM notification_subscribers WHERE status = 'pending' AND created_at < n
 
 func (r *Repository) ActiveSubscribers(ctx context.Context) ([]entity.NotificationSubscriber, error) {
 	rows, err := r.db(ctx).Query(ctx, `
-SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, status, created_at, verified_at
+SELECT id, twitch_login, twitch_user_id, steam_url, steam_id, steam_name, status, created_at, verified_at
 FROM notification_subscribers WHERE status = 'active'
 ORDER BY id;`)
 	if err != nil {
@@ -73,13 +73,30 @@ ORDER BY id;`)
 	var subs []entity.NotificationSubscriber
 	for rows.Next() {
 		var s entity.NotificationSubscriber
-		if err := rows.Scan(&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID,
+		if err := rows.Scan(&s.ID, &s.TwitchLogin, &s.TwitchUserID, &s.SteamURL, &s.SteamID, &s.SteamName,
 			&s.Status, &s.CreatedAt, &s.VerifiedAt); err != nil {
 			return nil, err
 		}
 		subs = append(subs, s)
 	}
 	return subs, rows.Err()
+}
+
+// UpdateSteamNames persists the latest resolved Steam persona names. It runs
+// in a single transaction so either every name is stored or none is.
+func (r *Repository) UpdateSteamNames(ctx context.Context, names map[int64]string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	return r.RunInTx(ctx, func(tctx context.Context) error {
+		for id, name := range names {
+			if _, err := r.db(tctx).Exec(tctx, `
+UPDATE notification_subscribers SET steam_name = $2 WHERE id = $1;`, id, name); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *Repository) ActiveSubscriberChannels(ctx context.Context) ([]string, error) {

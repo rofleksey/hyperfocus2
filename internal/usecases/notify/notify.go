@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"hyperfocus/internal/config"
@@ -16,10 +17,11 @@ type Repository interface {
 	ActiveSubscribers(ctx context.Context) ([]entity.NotificationSubscriber, error)
 	RecentNotification(ctx context.Context, subscriberID int64, detectedName string, cooldown time.Duration) (bool, error)
 	LogNotification(ctx context.Context, subscriberID int64, detectedName string, score float64, snapshotID int64, sourceStreamerID string) error
+	UpdateSteamNames(ctx context.Context, names map[int64]string) error
 }
 
 type IRCMessenger interface {
-	Send(channel, message string)
+	Send(ctx context.Context, channel, message string)
 }
 
 type SteamNameResolver interface {
@@ -46,6 +48,7 @@ type Service struct {
 	mu         sync.RWMutex
 	cache      []cachedSubscriber
 	cacheUntil time.Time
+	running    atomic.Bool
 }
 
 type cachedSubscriber struct {
@@ -53,6 +56,7 @@ type cachedSubscriber struct {
 	TwitchLogin  string
 	TwitchUserID string
 	SteamID      string
+	SteamName    string
 }
 
 func New(d Deps) *Service {
@@ -64,6 +68,24 @@ func New(d Deps) *Service {
 		botUserID: d.BotUserID,
 		cfg:       d.Config,
 	}
+}
+
+// ProcessAsync schedules a snapshot for notification processing on its own
+// goroutine so the poll cycle never blocks on the Steam API. If the previous
+// run is still in flight, the snapshot is skipped (notifications are only
+// meaningful for fresh data anyway).
+func (s *Service) ProcessAsync(ctx context.Context, snapID int64, samples []entity.StreamSample) {
+	if !s.cfg.IsEnabled() {
+		return
+	}
+	if !s.running.CompareAndSwap(false, true) {
+		s.log.Debug("notify: previous cycle still processing; skipping")
+		return
+	}
+	go func() {
+		defer s.running.Store(false)
+		s.ProcessSnapshot(ctx, snapID, samples)
+	}()
 }
 
 func (s *Service) ProcessSnapshot(ctx context.Context, snapID int64, samples []entity.StreamSample) {
@@ -81,50 +103,75 @@ func (s *Service) ProcessSnapshot(ctx context.Context, snapID int64, samples []e
 		return
 	}
 
+	workers := s.cfg.Workers
+	if workers <= 0 {
+		workers = 2
+	}
+
+	tasks := make(chan cachedSubscriber)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for sub := range tasks {
+				s.processSubscription(ctx, sub, samples, snapID, matchNames)
+			}
+		}()
+	}
+	for _, sub := range subs {
+		tasks <- sub
+	}
+	close(tasks)
+	wg.Wait()
+}
+
+// processSubscription matches one subscriber against every sample and sends
+// notifications when their Steam name shows up in another streamer's lobby.
+func (s *Service) processSubscription(ctx context.Context, sub cachedSubscriber, samples []entity.StreamSample, snapID int64, matchNames map[int64][]string) {
+	names, ok := matchNames[sub.ID]
+	if !ok {
+		return
+	}
 	for _, sample := range samples {
-		if sample.StreamerLogin == "" {
+		if sample.StreamerLogin == "" || sub.TwitchUserID == sample.StreamerID {
 			continue
 		}
-		for _, sub := range subs {
-			if sub.TwitchUserID == sample.StreamerID {
-				continue
-			}
-			names, ok := matchNames[sub.ID]
-			if !ok {
-				continue
-			}
-			best := 0.0
-			for _, name := range names {
-				for _, survivor := range sample.SurvivorNames {
-					if score := fuzzy.Score(name, survivor); score > best {
-						best = score
-					}
+		best := 0.0
+		for _, name := range names {
+			for _, survivor := range sample.SurvivorNames {
+				if score := fuzzy.Score(name, survivor); score > best {
+					best = score
 				}
 			}
-			if best < s.cfg.MinScore {
-				continue
-			}
-			recent, err := s.repo.RecentNotification(ctx, sub.ID, sample.StreamerLogin, s.cfg.Cooldown.Std())
-			if err != nil {
-				s.log.Warn("notify: dedup check failed", slog.Any("error", err))
-				continue
-			}
-			if recent {
-				continue
-			}
-			msg := fmt.Sprintf("You might be playing with @%s", sample.StreamerLogin)
-			s.irc.Send(sub.TwitchLogin, msg)
-			if err := s.repo.LogNotification(ctx, sub.ID, sample.StreamerLogin, best, snapID, sample.StreamerID); err != nil {
-				s.log.Warn("notify: log failed", slog.Any("error", err))
-			}
-			s.log.Info("notify: sent",
-				slog.String("to", sub.TwitchLogin),
-				slog.String("streamer", sample.StreamerLogin),
-				slog.Float64("score", best))
 		}
+		if best < s.cfg.MinScore {
+			continue
+		}
+		recent, err := s.repo.RecentNotification(ctx, sub.ID, sample.StreamerLogin, s.cfg.Cooldown.Std())
+		if err != nil {
+			s.log.Warn("notify: dedup check failed", slog.Any("error", err))
+			continue
+		}
+		if recent {
+			continue
+		}
+		msg := fmt.Sprintf("You might be playing with @%s", sample.StreamerLogin)
+		s.irc.Send(ctx, sub.TwitchLogin, msg)
+		if err := s.repo.LogNotification(ctx, sub.ID, sample.StreamerLogin, best, snapID, sample.StreamerID); err != nil {
+			s.log.Warn("notify: log failed", slog.Any("error", err))
+		}
+		s.log.Info("notify: sent",
+			slog.String("to", sub.TwitchLogin),
+			slog.String("streamer", sample.StreamerLogin),
+			slog.Float64("score", best))
 	}
 }
 
+// fetchMatchNames resolves the current Steam persona name for every
+// subscriber. On success the fresh names are persisted so they can serve as a
+// fallback later; only when the API fails entirely (all retries exhausted)
+// are the stored names used.
 func (s *Service) fetchMatchNames(ctx context.Context, subs []cachedSubscriber) map[int64][]string {
 	steamIDs := make([]string, 0, len(subs))
 	for _, sub := range subs {
@@ -138,17 +185,30 @@ func (s *Service) fetchMatchNames(ctx context.Context, subs []cachedSubscriber) 
 
 	names, err := s.steam.GetPlayerSummaries(ctx, steamIDs)
 	if err != nil {
-		s.log.Warn("notify: steam api call failed", slog.Any("error", err))
-		return nil
-	}
-
-	out := make(map[int64][]string)
-	for i, sub := range subs {
-		if i < len(names) {
-			if nn := fuzzy.Norm(names[i]); nn != "" {
+		s.log.Warn("notify: steam api failed, using stored names", slog.Any("error", err))
+		out := make(map[int64][]string)
+		for _, sub := range subs {
+			if nn := fuzzy.Norm(sub.SteamName); nn != "" {
 				out[sub.ID] = []string{nn}
 			}
 		}
+		return out
+	}
+
+	out := make(map[int64][]string)
+	updates := make(map[int64]string)
+	for i, sub := range subs {
+		if i >= len(names) {
+			continue
+		}
+		if names[i] == "" {
+			continue
+		}
+		updates[sub.ID] = names[i]
+		out[sub.ID] = []string{fuzzy.Norm(names[i])}
+	}
+	if err := s.repo.UpdateSteamNames(ctx, updates); err != nil {
+		s.log.Warn("notify: failed to store steam names", slog.Any("error", err))
 	}
 	return out
 }
@@ -185,6 +245,7 @@ func (s *Service) activeSubscribers(ctx context.Context) []cachedSubscriber {
 			TwitchLogin:  sub.TwitchLogin,
 			TwitchUserID: sub.TwitchUserID,
 			SteamID:      sub.SteamID,
+			SteamName:    sub.SteamName,
 		})
 	}
 

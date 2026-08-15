@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gempir/go-twitch-irc/v4"
+	"golang.org/x/time/rate"
 )
 
 type IRCCommand struct {
@@ -23,8 +24,9 @@ type IRCBot struct {
 	tokenFn  func() string
 	commands chan IRCCommand
 
-	mu     sync.Mutex
-	joined map[string]bool
+	mu      sync.Mutex
+	joined  map[string]bool
+	limiter *rate.Limiter
 }
 
 func NewIRCBot(log *slog.Logger, nick string, tokenFn func() string, commands chan IRCCommand) *IRCBot {
@@ -34,6 +36,8 @@ func NewIRCBot(log *slog.Logger, nick string, tokenFn func() string, commands ch
 		tokenFn:  tokenFn,
 		commands: commands,
 		joined:   make(map[string]bool),
+		// Global rate limit for outbound messages: at most one per second.
+		limiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
 }
 
@@ -130,7 +134,13 @@ func (b *IRCBot) Part(channel string) {
 	b.log.Info("irc: parted", slog.String("channel", channel))
 }
 
-func (b *IRCBot) Send(channel, message string) {
+// Send delivers a message to a channel. Outbound messages are globally rate
+// limited to one per second; concurrent callers block until their turn, or
+// until ctx is cancelled.
+func (b *IRCBot) Send(ctx context.Context, channel, message string) {
+	if err := b.limiter.Wait(ctx); err != nil {
+		return
+	}
 	b.mu.Lock()
 	c := b.client
 	b.mu.Unlock()

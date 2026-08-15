@@ -90,6 +90,7 @@ type Notify struct {
 	Enabled  *bool    `yaml:"enabled"`
 	MinScore float64  `yaml:"min_score"`
 	Cooldown Duration `yaml:"cooldown"`
+	Workers  int      `yaml:"workers"`
 }
 
 func (n Notify) IsEnabled() bool { return n.Enabled == nil || *n.Enabled }
@@ -117,6 +118,7 @@ func (t TwitchBot) ClientSecretOr(parent string) string {
 type Steam struct {
 	APIKey       string   `yaml:"api_key"`
 	RefreshEvery Duration `yaml:"refresh_every"`
+	Retries      int      `yaml:"retries"`
 }
 
 type Log struct {
@@ -175,6 +177,8 @@ func applyEnvOverrides(c *Config) {
 	envStr("HYPERFOCUS_TWITCH_CLIENT_SECRET", &c.Twitch.ClientSecret)
 	envStr("HYPERFOCUS_TWITCHBOT_REFRESH_TOKEN", &c.TwitchBot.RefreshToken)
 	envStr("HYPERFOCUS_STEAM_API_KEY", &c.Steam.APIKey)
+	envInt("HYPERFOCUS_STEAM_RETRIES", &c.Steam.Retries)
+	envInt("HYPERFOCUS_NOTIFY_WORKERS", &c.Notify.Workers)
 	envStr("HYPERFOCUS_OCR_API_URL", &c.OCR.APIURL)
 	envStr("HYPERFOCUS_STORAGE_DATA_DIR", &c.Storage.DataDir)
 }
@@ -248,10 +252,12 @@ func applyDefaults(c *Config) {
 	if c.Notify.Cooldown == 0 {
 		c.Notify.Cooldown = Duration(30 * time.Minute)
 	}
+	set(&c.Notify.Workers, 2)
 
 	if c.Steam.RefreshEvery == 0 {
 		c.Steam.RefreshEvery = Duration(30 * time.Minute)
 	}
+	set(&c.Steam.Retries, 1)
 }
 
 // DSN builds a PostgreSQL connection string.

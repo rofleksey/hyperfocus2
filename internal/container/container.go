@@ -127,10 +127,10 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 			Config:    cfg.Notify,
 		})
 
-		subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify, cfg.Steam.APIKey)
+		subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify, cfg.Steam)
 
 		pollUC.AfterCycle = func(pCtx context.Context, snapshotID int64, samples []entity.StreamSample) {
-			notifyUC.ProcessSnapshot(pCtx, snapshotID, samples)
+			notifyUC.ProcessAsync(pCtx, snapshotID, samples)
 		}
 
 		channels, err := repo.ActiveSubscriberChannels(ctx)
@@ -194,7 +194,9 @@ func ircCommandLoop(ctx context.Context, commands <-chan nottwitch.IRCCommand, h
 	}
 }
 
-func channelRefreshLoop(ctx context.Context, irc *nottwitch.IRCBot, repo interface{ ActiveSubscriberChannels(context.Context) ([]string, error) }) {
+func channelRefreshLoop(ctx context.Context, irc *nottwitch.IRCBot, repo interface {
+	ActiveSubscriberChannels(context.Context) ([]string, error)
+}) {
 	t := time.NewTicker(5 * time.Minute)
 	defer t.Stop()
 	for {
@@ -210,7 +212,9 @@ func channelRefreshLoop(ctx context.Context, irc *nottwitch.IRCBot, repo interfa
 	}
 }
 
-func cleanupLoop(ctx context.Context, repo interface{ DeletePendingExpired(context.Context) (int64, error) }, log *slog.Logger) {
+func cleanupLoop(ctx context.Context, repo interface {
+	DeletePendingExpired(context.Context) (int64, error)
+}, log *slog.Logger) {
 	t := time.NewTicker(1 * time.Hour)
 	defer t.Stop()
 	for {
@@ -230,19 +234,20 @@ func newSteamNameResolver(cfg config.Steam, log *slog.Logger) *steamNameResolver
 	if cfg.APIKey == "" {
 		return &steamNameResolver{}
 	}
-	return &steamNameResolver{apiKey: cfg.APIKey, log: log}
+	return &steamNameResolver{apiKey: cfg.APIKey, retries: cfg.Retries, log: log}
 }
 
 type steamNameResolver struct {
-	apiKey string
-	log    *slog.Logger
+	apiKey  string
+	retries int
+	log     *slog.Logger
 }
 
 func (r *steamNameResolver) GetPlayerSummaries(ctx context.Context, steamIDs []string) ([]string, error) {
 	if r.apiKey == "" || len(steamIDs) == 0 {
 		return nil, nil
 	}
-	summaries, err := steam.GetPlayerSummaries(ctx, r.apiKey, steamIDs)
+	summaries, err := steam.GetPlayerSummaries(ctx, r.apiKey, steamIDs, r.retries)
 	if err != nil {
 		return nil, err
 	}
