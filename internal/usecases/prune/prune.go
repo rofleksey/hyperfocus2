@@ -50,7 +50,8 @@ func New(d Deps) *Pruner {
 	return &Pruner{clock: d.Clock, log: d.Logger, repo: d.Repo, prev: d.Preview, cfg: d.Config}
 }
 
-// Run prunes forever until ctx is cancelled.
+// Run prunes once immediately at startup (so restarting doesn't postpone
+// cleanup) and then by interval, forever, until ctx is cancelled.
 func (p *Pruner) Run(ctx context.Context) {
 	interval := p.cfg.Interval.Std()
 	if interval <= 0 {
@@ -62,6 +63,8 @@ func (p *Pruner) Run(ctx context.Context) {
 	}
 	p.log.Info("prune loop starting",
 		slog.Duration("interval", interval), slog.Int("retention_hours", hours))
+
+	p.tick(ctx, hours)
 
 	t := time.NewTicker(interval)
 	defer t.Stop()
