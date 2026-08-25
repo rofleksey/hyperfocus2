@@ -2,14 +2,11 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import DatePicker from "primevue/datepicker";
 import InputText from "primevue/inputtext";
-import Select from "primevue/select";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import { useRoute, useRouter } from "vue-router";
 import { fetchConfig, fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type Stream } from "../api";
 
-const SORT_OPTIONS = ["viewers", "name", "started"] as const;
-const DIR_OPTIONS = ["asc", "desc"] as const;
 const PAGE_SIZE = 100;
 const DEBOUNCE_MS = 300;
 const POLL_INTERVAL_MS = 30000;
@@ -25,24 +22,11 @@ const router = useRouter();
 const at = ref<Date | null>(route.query.at ? new Date(qStr(route.query.at)) : new Date());
 const survivor = ref<string>(qStr(route.query.survivor));
 const q = ref<string>(qStr(route.query.q));
-const language = ref<string>(qStr(route.query.language));
-const sort = ref<string>(SORT_OPTIONS.includes(qStr(route.query.sort) as typeof SORT_OPTIONS[number]) ? qStr(route.query.sort) : "viewers");
-const dir = ref<string>(DIR_OPTIONS.includes(qStr(route.query.dir) as typeof DIR_OPTIONS[number]) ? qStr(route.query.dir) : "desc");
 const filtersVisible = ref(false);
 
 const survivorSearchActive = computed(() => survivor.value.trim().length > 0);
 
-const hasFilters = computed(() => q.value.trim() !== "" || language.value.trim() !== "" || sort.value !== "viewers" || dir.value !== "desc");
-
-const sortOptions = [
-  { label: "Viewer count", value: "viewers" },
-  { label: "Name", value: "name" },
-  { label: "Stream start", value: "started" },
-];
-const dirOptions = [
-  { label: "Descending", value: "desc" },
-  { label: "Ascending", value: "asc" },
-];
+const hasFilters = computed(() => q.value.trim() !== "");
 
 // Retention window comes from the server (/api/config) so the UI can never
 // disagree with the backend. Falls back to a conservative value.
@@ -115,7 +99,7 @@ async function loadFirstPage() {
   allStreams.value = [];
   try {
     const atParam = at.value ? at.value.toISOString() : "";
-    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE, signal);
+    moment.value = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), "", "", "", offset, PAGE_SIZE, signal);
     allStreams.value = moment.value.streams;
     if (moment.value.streams.length < PAGE_SIZE) hasMore.value = false;
     const snaps = await fetchSnapshots(SNAPSHOTS_LIMIT, signal);
@@ -134,7 +118,7 @@ async function loadMore() {
   loadingMore.value = true; offset += PAGE_SIZE;
   try {
     const atParam = at.value ? at.value.toISOString() : "";
-    const page = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), language.value, sort.value, dir.value, offset, PAGE_SIZE, momentController?.signal);
+    const page = await fetchMoment(atParam, q.value.trim(), survivor.value.trim(), "", "", "", offset, PAGE_SIZE, momentController?.signal);
     if (page.streams.length < PAGE_SIZE) hasMore.value = false;
     allStreams.value.push(...page.streams);
   } catch (e) {
@@ -183,9 +167,6 @@ function syncURL() {
   if (at.value) params.at = at.value.toISOString();
   if (survivor.value.trim()) params.survivor = survivor.value.trim();
   if (q.value.trim()) params.q = q.value.trim();
-  if (language.value.trim()) params.language = language.value.trim();
-  if (sort.value !== "viewers") params.sort = sort.value;
-  if (dir.value !== "desc") params.dir = dir.value;
   router.replace({ query: { ...params } });
 }
 
@@ -195,16 +176,10 @@ watch(() => route.fullPath, async () => {
     at.value = new Date();
     survivor.value = "";
     q.value = "";
-    language.value = "";
-    sort.value = "viewers";
-    dir.value = "desc";
   } else {
     if (route.query.at) at.value = new Date(qStr(route.query.at));
     survivor.value = qStr(route.query.survivor);
     q.value = qStr(route.query.q);
-    language.value = qStr(route.query.language);
-    sort.value = SORT_OPTIONS.includes(qStr(route.query.sort) as typeof SORT_OPTIONS[number]) ? qStr(route.query.sort) : "viewers";
-    dir.value = DIR_OPTIONS.includes(qStr(route.query.dir) as typeof DIR_OPTIONS[number]) ? qStr(route.query.dir) : "desc";
   }
   await nextTick();
   syncingFromRoute--;
@@ -213,11 +188,8 @@ watch(() => route.fullPath, async () => {
 watch(at, syncURL);
 watch(survivor, syncURL);
 watch(q, syncURL);
-watch(language, syncURL);
-watch(sort, syncURL);
-watch(dir, syncURL);
 watch(at, debounceLoad);
-watch([survivor, q, language, sort, dir], debounceLoad);
+watch([survivor, q], debounceLoad);
 watch(sentinel, setupObserver);
 
 function scorePct(s: Stream): string {
@@ -327,23 +299,7 @@ onUnmounted(() => {
             <button v-if="q" class="input-clear pi pi-times" @click="q = ''" aria-label="Clear streamer name"></button>
           </div>
         </div>
-        <div class="field">
-          <label for="language">Language</label>
-          <div class="input-wrap">
-            <InputText id="language" v-model="language" placeholder="e.g. en" size="small" style="width:100%" />
-            <button v-if="language" class="input-clear pi pi-times" @click="language = ''" aria-label="Clear language"></button>
-          </div>
-        </div>
-        <div class="field">
-          <label for="sort">Sort by</label>
-          <Select id="sort" v-model="sort" :options="sortOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" :disabled="survivorSearchActive" />
-        </div>
-        <div class="field">
-          <label for="dir">Direction</label>
-          <Select id="dir" v-model="dir" :options="dirOptions" optionLabel="label" optionValue="value" size="small" style="width:100%" :disabled="survivorSearchActive" />
-        </div>
-        <p v-if="survivorSearchActive" class="muted field-hint">Sort is disabled — survivor search ranks by relevance.</p>
-        <Button v-if="hasFilters" label="Reset filters" severity="secondary" size="small" @click="q = ''; language = ''; sort = 'viewers'; dir = 'desc'" />
+        <Button v-if="hasFilters" label="Reset filters" severity="secondary" size="small" @click="q = ''" />
       </div>
     </Dialog>
   </section>
@@ -396,7 +352,6 @@ onUnmounted(() => {
   .survivor-search { max-width: 100%; }
 }
 
-.field-hint { font-size: 0.72rem; margin: 0; }
 .filters-grid { display: flex; flex-direction: column; gap: 0.75rem; }
 .filters-grid .field { display: flex; flex-direction: column; gap: 0.2rem; }
 .filters-grid label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--p-text-muted-color); }
