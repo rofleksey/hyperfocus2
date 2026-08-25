@@ -233,40 +233,27 @@ func (p *Poll) doPoll(ctx context.Context) error {
 		slog.Int("sessions", len(results)))
 
 	// -----------------------------------------------------------------------
-	// Phase 5 — third DB tx: samples with preview.
+	// Phase 5 — third DB tx: samples with preview. A single transaction keeps
+	// the batch fast; if it still fails (e.g. a session pruned mid-cycle), fall
+	// back to per-sample inserts so one bad reference cannot void the whole
+	// snapshot.
 	// -----------------------------------------------------------------------
 	if err := p.repo.RunInTx(ctx, func(tctx context.Context) error {
 		for _, r := range results {
-			var fn *string
-			if r.previewFile != "" {
-				f := r.previewFile
-				fn = &f
-			}
-			var tn *string
-			if r.thumbFile != "" {
-				t := r.thumbFile
-				tn = &t
-			}
-			if err := p.repo.InsertSample(tctx, entity.StreamSample{
-				SnapshotID:      snapshotID,
-				SessionID:       r.sessionID,
-				StreamerID:      r.stream.TwitchUserID,
-				StreamerLogin:   r.stream.Login,
-				ViewerCount:     r.stream.ViewerCount,
-				Title:           r.stream.Title,
-				Language:        r.stream.Language,
-				Tags:            r.stream.Tags,
-				StartedAt:       r.stream.StartedAt,
-				PreviewFilename: fn,
-				ThumbFilename:   tn,
-				SurvivorNames:   r.survivorNames,
-			}); err != nil {
+			if err := p.repo.InsertSample(tctx, buildSample(snapshotID, r)); err != nil {
 				return oops.Wrap(err)
 			}
 		}
 		return nil
 	}); err != nil {
-		return err
+		p.log.Warn("poll: samples batch failed, retrying per-sample", slog.Any("error", err))
+		for _, r := range results {
+			if err := p.repo.InsertSample(ctx, buildSample(snapshotID, r)); err != nil {
+				p.log.Warn("poll: sample skipped",
+					slog.String("login", r.stream.Login),
+					slog.Any("error", err))
+			}
+		}
 	}
 
 	totalDur = time.Since(started)
@@ -304,6 +291,34 @@ func (p *Poll) doPoll(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// buildSample assembles the StreamSample entity for one captured stream.
+func buildSample(snapshotID int64, r streamResult) entity.StreamSample {
+	var fn *string
+	if r.previewFile != "" {
+		f := r.previewFile
+		fn = &f
+	}
+	var tn *string
+	if r.thumbFile != "" {
+		t := r.thumbFile
+		tn = &t
+	}
+	return entity.StreamSample{
+		SnapshotID:      snapshotID,
+		SessionID:       r.sessionID,
+		StreamerID:      r.stream.TwitchUserID,
+		StreamerLogin:   r.stream.Login,
+		ViewerCount:     r.stream.ViewerCount,
+		Title:           r.stream.Title,
+		Language:        r.stream.Language,
+		Tags:            r.stream.Tags,
+		StartedAt:       r.stream.StartedAt,
+		PreviewFilename: fn,
+		ThumbFilename:   tn,
+		SurvivorNames:   r.survivorNames,
+	}
 }
 
 // ---------------------------------------------------------------------------

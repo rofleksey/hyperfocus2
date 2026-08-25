@@ -8,15 +8,22 @@ import (
 )
 
 // EnsureOpenSession returns the session id for the given Twitch stream id,
-// creating it (open, no end) if it does not yet exist. Also returns any
-// previously-resolved vod_id so callers can skip redundant VOD lookups.
+// creating it (open, no end) if it does not yet exist. If a session for that
+// stream id exists but was closed (e.g. the stream briefly dropped out of a
+// poll cycle, or the Twitch API returned a stale entry), it is reopened: the
+// row update takes a lock and clears ended_at, so the hourly prune — which
+// only deletes sessions with ended_at IS NOT NULL — can never remove a
+// session between the poller capturing its id and inserting samples minutes
+// later (a race that used to abort whole snapshots with FK violations).
+// Also returns any previously-resolved vod_id so callers can skip redundant
+// VOD lookups.
 func (r *Repository) EnsureOpenSession(ctx context.Context, streamerID, twitchStreamID string, startedAt time.Time) (int64, *string, error) {
 	var id int64
 	var vodID *string
 	err := r.db(ctx).QueryRow(ctx, `
 INSERT INTO stream_sessions (streamer_id, twitch_stream_id, started_at, ended_at)
 VALUES ($1, $2, $3, NULL)
-ON CONFLICT (twitch_stream_id) DO UPDATE SET started_at = stream_sessions.started_at
+ON CONFLICT (twitch_stream_id) DO UPDATE SET started_at = stream_sessions.started_at, ended_at = NULL
 RETURNING id, vod_id;`, streamerID, twitchStreamID, startedAt).Scan(&id, &vodID)
 	return id, vodID, err
 }
