@@ -12,6 +12,13 @@ body {
   outline-offset: 2px;
 }
 
+/* The main container receives programmatic focus after each route change
+   (for keyboard/screen-reader users); it must not paint an outline ring. */
+main:focus-visible,
+main:focus {
+  outline: none;
+}
+
 .skip-link {
   position: absolute;
   top: -100%;
