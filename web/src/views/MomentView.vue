@@ -40,7 +40,9 @@ const outsideRetention = computed(() => {
 
 const moment = ref<MomentResponse | null>(null);
 const allStreams = ref<Stream[]>([]);
-const loading = ref(false);
+// Start in the loading state so the first paint shows the spinner instead of
+// flashing the "No streams found" empty state before the initial fetch runs.
+const loading = ref(true);
 const loadingMore = ref(false);
 const error = ref<string>("");
 const hasMore = ref(true);
@@ -172,15 +174,15 @@ function syncURL() {
 
 watch(() => route.fullPath, async () => {
   syncingFromRoute++;
-  if (Object.keys(route.query).length === 0) {
-    at.value = new Date();
-    survivor.value = "";
-    q.value = "";
-  } else {
-    if (route.query.at) at.value = new Date(qStr(route.query.at));
-    survivor.value = qStr(route.query.survivor);
-    q.value = qStr(route.query.q);
-  }
+  // Only assign state when the route value actually differs. This ignores the
+  // echo of our own router.replace from syncURL() (which would otherwise fire
+  // debounceLoad and cause a second data fetch / gallery blink on first load).
+  const nextAt = route.query.at ? new Date(qStr(route.query.at)) : new Date();
+  const nextSurvivor = qStr(route.query.survivor);
+  const nextQ = qStr(route.query.q);
+  if (nextAt.getTime() !== (at.value?.getTime() ?? 0)) at.value = nextAt;
+  if (survivor.value !== nextSurvivor) survivor.value = nextSurvivor;
+  if (q.value !== nextQ) q.value = nextQ;
   await nextTick();
   syncingFromRoute--;
 });
