@@ -3,16 +3,17 @@
     <h2>About Hyperfocus</h2>
 
     <p>
-      Hyperfocus tracks <strong>Dead by Daylight</strong> live streams on Twitch.
-      It takes periodic snapshots of every active streamer — capturing viewer
-      counts, stream titles, preview thumbnails, and player names — so you can
-      browse who was online at any moment in time.
+      Hyperfocus finds you in <strong>Dead by Daylight</strong> streams. It tracks
+      every live DBD stream on Twitch, reads the survivor names on screen, and —
+      when you subscribe with your Twitch login and Steam profile — messages you
+      in your own Twitch chat whenever your Steam name is spotted in another
+      streamer's lobby, often mid-match.
     </p>
 
     <p>
       Player names are extracted from stream previews using
       <strong>optical character recognition</strong> (OCR). Type a name into the
-      search bar on the main page to find which streamers that player appeared
+      search bar on the live gallery to find which streamers that player appeared
       with — useful for tracking lobbies and snipes across the DBD community.
     </p>
 
@@ -24,11 +25,12 @@
           each (falling back to 720p when unavailable).</li>
       <li>Previews are processed by an OCR engine that reads the four survivor
           names from the bottom-left HUD panel.</li>
-      <li>Snapshots are kept for a rolling window (currently 3 hours) and
-          automatically pruned every hour.</li>
+      <li>Snapshots are kept for a rolling window and automatically pruned
+          every hour.</li>
       <li>Optional notifications: subscribe with your Twitch login and Steam
-          profile (verified with a chat command) and the bot pings you whenever
-          your Steam name is spotted in another streamer's lobby.</li>
+          profile (verified with a chat command) and the bot pings you in your
+          own Twitch chat whenever your Steam name is spotted in another
+          streamer's lobby. Dead by Daylight is the only game supported.</li>
       <li>There are no accounts and no cookies — the only data kept is what
           you submit when subscribing to notifications.</li>
     </ul>
@@ -41,6 +43,8 @@
     </p>
 
     <div class="about-links">
+      <RouterLink to="/subscribe">Get notified</RouterLink>
+      <RouterLink to="/live">Live gallery</RouterLink>
       <RouterLink to="/privacy">Privacy Policy</RouterLink>
       <RouterLink to="/terms">Terms of Service</RouterLink>
       <a href="https://github.com/rofleksey/hyperfocus2" target="_blank" rel="noopener noreferrer">GitHub</a>

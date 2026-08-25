@@ -1,9 +1,21 @@
 import { createRouter, createWebHistory } from "vue-router";
 
+const LEGACY_QUERY_KEYS = ["at", "survivor", "q", "language", "sort", "dir"];
+
 export default createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", name: "moment", component: () => import("./views/MomentView.vue") },
+    {
+      path: "/",
+      name: "landing",
+      component: () => import("./views/LandingView.vue"),
+      beforeEnter: (to) => {
+        if (LEGACY_QUERY_KEYS.some((k) => k in to.query)) {
+          return { name: "live", query: { ...to.query } };
+        }
+      },
+    },
+    { path: "/live", name: "live", component: () => import("./views/MomentView.vue") },
     { path: "/stream/:streamer_id", name: "stream-detail", component: () => import("./views/StreamDetailView.vue"), props: true },
     { path: "/stats", name: "stats", component: () => import("./views/StatsView.vue") },
     { path: "/subscribe", name: "subscribe", component: () => import("./views/SubscribeView.vue") },

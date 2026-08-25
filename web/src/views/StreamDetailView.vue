@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, RouterLink } from "vue-router";
 import { fetchSample, type Stream } from "../api";
 
@@ -9,6 +9,11 @@ const route = useRoute();
 const stream = ref<Stream | null>(null);
 const loading = ref(false);
 const error = ref("");
+
+const backLink = computed(() => {
+  const at = route.query.at;
+  return typeof at === "string" && at ? `/live?at=${encodeURIComponent(at)}` : "/live";
+});
 
 function fmt(date: string): string {
   try { return new Date(date).toLocaleString(); } catch { return date; }
@@ -45,7 +50,7 @@ onMounted(load);
 
     <template v-if="!loading && stream">
       <p class="muted" style="margin-bottom:0.5rem">
-        <RouterLink to="/">&larr; Back</RouterLink>
+        <RouterLink :to="backLink">&larr; Back</RouterLink>
       </p>
 
       <img

@@ -4,12 +4,17 @@
 
 <h3 align="center"><a href="https://hyperfocusdbd.com">🔗 hyperfocusdbd.com</a></h3>
 
-# Hyperfocus — Dead by Daylight live stream history
+# Hyperfocus — Dead by Daylight streamer detection & stream history
 
-Hyperfocus tracks every active [Dead by Daylight](https://store.steampowered.com/app/381210/Dead_by_Daylight/) stream on Twitch in real time. It captures periodic snapshots of viewer counts, stream titles, preview thumbnails, and player names so you can browse who was online at any moment — past or present.
+Hyperfocus watches every live [Dead by Daylight](https://store.steampowered.com/app/381210/Dead_by_Daylight/) stream on Twitch and tells you — often mid-match — when you're playing against a streamer. Subscribe with your Twitch login and Steam profile, verify in your own chat, and the bot messages you there whenever your Steam name is spotted in another streamer's lobby.
+
+It's also a browsable history of the DBD category: who was live at any moment, with viewer counts, titles, thumbnails, and OCR-read survivor names.
+
+> **Only Dead by Daylight is supported** — the name reader is built specifically for the DBD HUD.
 
 ## Features
 
+- **Streamer detection notifications** — optional Twitch chat bot that matches your Steam name against the survivors in other streamers' lobbies and pings you on a hit (see [Notifications](#notifications))
 - **Live polling** — continuously fetches all DBD streams from Twitch (~2000 per cycle) in a back-to-back poll loop
 - **Historical snapshots** — navigate back in time with prev/next buttons, a datetime picker, or a "Now" button with new-data indicator
 - **Thumbnail gallery** — responsive grid of 16:9 stream previews with viewer counts, relevance scores, and infinite scroll
@@ -17,8 +22,32 @@ Hyperfocus tracks every active [Dead by Daylight](https://store.steampowered.com
 - **Fuzzy search** — search by streamer name, language, or survivor in-game name with a loose matcher that tolerates OCR recognition errors
 - **Streamer detail** — click any streamer to see their sample at that moment: preview, viewer count, title, tags, and OCR survivor names
 - **Stats charts** — line charts for streams online, total viewers, cycle time, disk usage, preview capture rate, and OCR success rate over time
-- **Notifications** — optional Twitch chat bot that matches your Steam name against survivors in other streamers' lobbies and pings you on a hit
 - **No accounts, no cookies** — built with Vue 3 + PrimeVue, dark theme, responsive
+
+## Notifications
+
+The site has two parts: a **landing page** (`/`) that explains the service, and the **live gallery** (`/live`) for browsing the stream history.
+
+### How it works
+
+1. **Subscribe** — enter your Twitch username and your Steam profile URL on `/subscribe`.
+2. **Verify** — the bot joins your Twitch chat; type `!hyperfocussub` in your *own* channel to confirm ownership.
+3. **Tracking** — every live DBD stream's preview is OCR-read to extract the four survivor names.
+4. **Detected** — when your Steam name fuzzy-matches (score ≥ `notify.min_score`, default 0.60) a survivor in another streamer's lobby, the bot pings you in your own Twitch chat with their channel name.
+
+Notifications arrive as **chat messages in your own channel** — the bot does not send direct messages (whispers). Unverified subscriptions expire after 24 hours; unsubscribe anytime with `!hyperfocusunsub` in your chat. Your Steam display name is refreshed automatically.
+
+### Will it detect you?
+
+Detection relies on reading names from stream previews, so it won't catch everything:
+
+- **Anonymous mode** — your nickname is replaced with the character's name, so there is nothing to match
+- **Survivor names hidden** — the streamer disabled survivor nicknames in their game settings
+- **Obscured HUD** — names covered by overlays, unusual HUD placement, or unreadable previews
+- **Very short matches** — roughly under 5 minutes can end before the tracker checks that stream
+- **Tricky nicknames** — very short, very common (`cat`, `orange`, `111`), or non-Latin names may be missed or matched to the wrong player
+
+Matching is fuzzy to tolerate OCR errors, so occasional false positives are possible. A per-streamer cooldown (`notify.cooldown`, default 30m) suppresses repeat pings.
 
 ## Architecture
 
@@ -86,12 +115,19 @@ twitch:
   client_id: "..."       # from dev.twitch.tv
   client_secret: "..."
 
+twitch_bot:
+  client_id: "..."       # bot app credentials (falls back to twitch.*)
+  client_secret: "..."
+  refresh_token: "..."   # bot account token (chat:read chat:edit scope)
+
 ocr:
   enabled: true
   api_url: "http://localhost:8081"   # hyperfocus2-ocr service
 
 notify:
   enabled: false                     # optional chat notifications
+  min_score: 0.60                    # fuzzy-match threshold for detection
+  cooldown: "30m"                    # per-streamer notification cooldown
   workers: 2                         # subscriptions processed in parallel
 
 steam:

@@ -56,7 +56,8 @@ async function subscribe() {
   <section class="subscribe-page">
     <h2>Notifications</h2>
     <p class="desc">
-      Get a heads-up in your Twitch chat when your Steam name is spotted in another streamer's DBD lobby.
+      Get a heads-up in your Twitch chat when your Steam name is spotted in another streamer's
+      Dead by Daylight lobby — often mid-match.
     </p>
 
     <div class="form">
@@ -94,9 +95,22 @@ async function subscribe() {
         <li>Enter your Twitch username and Steam profile URL.</li>
         <li>Submit — the bot will message you in your Twitch chat.</li>
         <li>Type <code>!hyperfocussub</code> in <strong>your own</strong> Twitch chat to verify.</li>
-        <li>Done! When your Steam name is spotted in another streamer's lobby, the bot pings you with their Twitch username.</li>
+        <li>Done! When your Steam name is spotted in another streamer's lobby, the bot pings you with their Twitch username, e.g. <code>You might be playing with @streamer</code>.</li>
       </ol>
       <p class="note">Your Steam display name is kept in sync automatically. Unverified subscriptions expire after 24 hours. Type <code>!hyperfocusunsub</code> in your chat to unsubscribe anytime.</p>
+
+      <h3>Where do notifications arrive?</h3>
+      <p>As chat messages in your <strong>own</strong> Twitch channel. The bot does not send direct messages.</p>
+
+      <h3>Will it detect you?</h3>
+      <ul>
+        <li>Anonymous mode replaces your nickname with the character name — undetectable.</li>
+        <li>Streamers can hide survivor nicknames in their game settings.</li>
+        <li>Names covered by overlays or unusual HUD layouts may be unreadable.</li>
+        <li>Matches under ~5 minutes can end before a detection cycle.</li>
+        <li>Very short, common, or non-Latin nicknames may be missed or matched to the wrong player.</li>
+      </ul>
+      <p class="note">Dead by Daylight only.</p>
     </div>
   </section>
 </template>
@@ -131,7 +145,7 @@ async function subscribe() {
 
 .info { margin-top: 2rem; font-size: 0.85rem; color: var(--p-text-muted-color); }
 .info h3 { font-size: 0.95rem; margin: 0 0 0.5rem; color: var(--p-text-color); }
-.info ol { padding-left: 1.2rem; line-height: 1.7; }
+.info ol, .info ul { padding-left: 1.2rem; line-height: 1.7; }
 .info code { background: rgba(255,255,255,0.08); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.8rem; }
 .note { margin-top: 0.75rem; font-size: 0.78rem; opacity: 0.8; }
 </style>

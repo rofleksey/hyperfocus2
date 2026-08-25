@@ -27,7 +27,7 @@
     <h3>3. Data Storage and Retention</h3>
     <p>
       Stream history (snapshots, sessions, samples) and preview thumbnail images
-      are kept for a rolling retention window — 3 hours on the hosted instance —
+      are kept for a short rolling retention window on the hosted instance —
       and automatically pruned. Subscription records are kept until you
       unsubscribe via the chat command; they are deleted immediately when you
       do. You may adjust or disable retention entirely when self-hosting via
