@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshot.png" alt="Hyperfocus screenshot" width="720">
+  <img src="screenshot.png" alt="Hyperfocus live gallery — Dead by Daylight streams with OCR survivor names" width="720">
 </p>
 
 <h3 align="center"><a href="https://hyperfocusdbd.com">🔗 hyperfocusdbd.com</a></h3>
@@ -15,13 +15,14 @@ It's also a browsable history of the DBD category: who was live at any moment, w
 ## Features
 
 - **Streamer detection notifications** — optional Twitch chat bot that matches your Steam name against the survivors in other streamers' lobbies and pings you on a hit (see [Notifications](#notifications))
-- **Live polling** — continuously fetches all DBD streams from Twitch (~2000 per cycle) in a back-to-back poll loop
-- **Historical snapshots** — navigate back in time with prev/next buttons, a datetime picker, or a "Now" button with new-data indicator
-- **Thumbnail gallery** — responsive grid of 16:9 stream previews with viewer counts, relevance scores, and infinite scroll
+- **Live polling** — continuously fetches all DBD streams from Twitch (~2800 per cycle) in a back-to-back poll loop
+- **Historical snapshots** — navigate back in time with prev/next buttons, a datetime picker, or a "Now" button with new-data indicator (3-hour rolling window on the live site)
+- **Thumbnail gallery** — responsive grid of 16:9 stream previews with survivor-match badges and infinite scroll
 - **OCR survivor names** — extracts the 4 player names from the bottom-left HUD of each stream's 1080p preview (720p fallback) using [PaddleOCR on ONNX Runtime](https://github.com/rofleksey/hyperfocus2-ocr)
-- **Fuzzy search** — search by streamer name, language, or survivor in-game name with a loose matcher that tolerates OCR recognition errors
+- **Fuzzy survivor search** — search by in-game name with a loose matcher that tolerates OCR recognition errors, plus a streamer-name filter
 - **Streamer detail** — click any streamer to see their sample at that moment: preview, viewer count, title, tags, and OCR survivor names
 - **Stats charts** — line charts for streams online, total viewers, cycle time, disk usage, preview capture rate, and OCR success rate over time
+- **SEO-ready** — per-route titles/meta, Open Graph and Twitter cards, sitemap, robots.txt, JSON-LD structured data, and an original skill-check favicon
 - **No accounts, no cookies** — built with Vue 3 + PrimeVue, dark theme, responsive
 
 ## Notifications
@@ -89,8 +90,8 @@ Each poll cycle: fetch live streams → download preview images → OCR survivor
 
 ```bash
 cp config.example.yaml config.yaml   # edit with your Twitch API credentials
-go build -o hyperfocus ./cmd/server/
-./hyperfocus
+make all                             # builds the Vue SPA, then the Go binary
+./bin/hyperfocus
 ```
 
 The embedded Vue SPA is served on `:8080`. Migrations run automatically.
