@@ -50,7 +50,7 @@ type subscribeResponse struct {
 
 func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Request) {
 	if !h.notifyCfg.IsEnabled() {
-		http.Error(w, `{"error":"notifications are disabled"}`, http.StatusServiceUnavailable)
+		httputil.Problem(w, http.StatusServiceUnavailable, "notifications are disabled")
 		return
 	}
 
@@ -59,7 +59,7 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if r.Method != http.MethodPost {
-		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		httputil.Problem(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -194,7 +194,9 @@ func (h *SubscribeHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 		httputil.JSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
-	httputil.JSON(w, http.StatusOK, subscribeResponse{Status: sub.Status, SteamName: h.fetchSteamName(r.Context(), sub)})
+	// Deliberately exposes only the status: Steam persona names of arbitrary
+	// users must not leak through this unauthenticated endpoint.
+	httputil.JSON(w, http.StatusOK, subscribeResponse{Status: sub.Status})
 }
 
 // HandleIRCCommand processes !hyperfocussub / !hyperfocusunsub from the IRC bot.

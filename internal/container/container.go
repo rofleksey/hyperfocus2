@@ -100,13 +100,21 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 	})
 
 	ircCommands := make(chan nottwitch.IRCCommand, 32)
+
+	// The subscribe handler is always constructed so /api/subscribe answers
+	// with a clean 503 when notifications are disabled (instead of panicking
+	// on a nil handler). botHelix/irc stay nil in that case; the handler
+	// returns early before touching them.
+	var botHelix *nottwitch.BotHelix
+	var ircBot *nottwitch.IRCBot
 	var subHandler *httpHandlers.SubscribeHandler
 
 	bgCtx, cancel := context.WithCancel(ctx)
 	bg := new(sync.WaitGroup)
 
 	if cfg.Notify.IsEnabled() {
-		botHelix, err := nottwitch.NewBotHelix(nottwitch.BotConfig{
+		var err error
+		botHelix, err = nottwitch.NewBotHelix(nottwitch.BotConfig{
 			ClientID:     cfg.TwitchBot.ClientIDor(cfg.Twitch.ClientID),
 			ClientSecret: cfg.TwitchBot.ClientSecretOr(cfg.Twitch.ClientSecret),
 			RefreshToken: cfg.TwitchBot.RefreshToken,
@@ -116,7 +124,7 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 			return nil, oops.Wrapf(err, "twitch bot init")
 		}
 
-		ircBot := nottwitch.NewIRCBot(log, cfg.TwitchBot.ClientIDor(cfg.Twitch.ClientID), botHelix.UserAccessToken, ircCommands)
+		ircBot = nottwitch.NewIRCBot(log, cfg.TwitchBot.ClientIDor(cfg.Twitch.ClientID), botHelix.UserAccessToken, ircCommands)
 
 		notifyUC := notify.New(notify.Deps{
 			Logger:    log,
@@ -126,8 +134,6 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 			BotUserID: botHelix.BotUserID(),
 			Config:    cfg.Notify,
 		})
-
-		subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify, cfg.Steam)
 
 		pollUC.AfterCycle = func(pCtx context.Context, snapshotID int64, samples []entity.StreamSample) {
 			notifyUC.ProcessAsync(pCtx, snapshotID, samples)
@@ -156,14 +162,21 @@ func Build(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, err
 		go func() { defer bg.Done(); tw.RunRefreshLoop(bgCtx) }()
 	}
 
+	subHandler = httpHandlers.NewSubscribeHandler(log, repo, botHelix, ircBot, cfg.Notify, cfg.Steam)
+
 	srv := server.New(log, httpHandlers.Deps{
 		Logger:    log,
 		Moments:   momentsUC,
 		Streamers: repo,
 		Previews:  pv,
 		StatsRepo: repo,
+		DB:        repo.Pool(),
 		Version:   Version,
 		Subscribe: subHandler,
+		Public: httpHandlers.PublicConfig{
+			RetentionHours: cfg.Prune.Hours,
+			NotifyEnabled:  cfg.Notify.IsEnabled(),
+		},
 	}, server.Config{Addr: cfg.Service.HTTPAddr, Version: Version})
 
 	return &App{

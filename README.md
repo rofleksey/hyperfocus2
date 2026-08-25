@@ -136,7 +136,7 @@ steam:
 
 prune:
   interval: "1h"
-  hours: 72                          # data retention window (default)
+  hours: 3                           # data retention window (hyperfocusdbd.com keeps 3h)
 ```
 
 ## Disclaimer

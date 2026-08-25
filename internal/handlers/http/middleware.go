@@ -75,8 +75,6 @@ func Recover(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-
-
 // Chain composes middlewares left-to-right (first listed runs outermost).
 func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
 	for i := len(mws) - 1; i >= 0; i-- {

@@ -27,7 +27,7 @@ RUN mkdir -p /opt/data && chown 65532:65532 /opt/data
 LABEL org.opencontainers.image.source="https://github.com/rofleksey/hyperfocus2"
 LABEL org.opencontainers.image.description="Dead by Daylight live stream history tracker"
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/api/healthz || exit 1
 USER 65532:65532
 CMD ["./hyperfocus"]

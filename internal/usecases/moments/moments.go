@@ -62,6 +62,9 @@ func New(d Deps) *Service {
 	return &Service{log: d.Logger, repo: d.Repo}
 }
 
+// maxFilteredResults bounds filtered (non-paginated) queries server-side.
+const maxFilteredResults = 1000
+
 // MomentAt returns the streams live closest to At, filtered/sorted.
 func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) {
 	if p.At.IsZero() {
@@ -112,11 +115,13 @@ func (s *Service) MomentAt(ctx context.Context, p Params) (MomentResult, error) 
 
 	// When any filter is active, return all matching rows so the user sees
 	// the complete result set (filtered sets are typically small). Pagination
-	// (limit/offset) only applies to unfiltered browsing.
+	// (limit/offset) only applies to unfiltered browsing. The unranked fetch
+	// is capped so a broad filter cannot pull an unbounded payload into
+	// memory on every request.
 	findLimit := p.Limit
 	findOffset := p.Offset
 	if p.Survivor != "" || p.Query != "" || p.Language != "" {
-		findLimit = 0
+		findLimit = maxFilteredResults
 		findOffset = 0
 	}
 	samples, err := s.repo.FindSamples(ctx, snap.ID, p.Query, p.Language, "all", p.Sort, p.Dir, findLimit, findOffset)

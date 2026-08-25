@@ -9,12 +9,17 @@ help: ## Show this help
 
 all: frontend build
 
+# The embedded SPA: web/dist must exist for the Go build (go:embed).
+web/dist/index.html: web/node_modules
+	cd web && npm run build
+	touch $@
+
 # Build the backend binary with the version baked in.
-build:
+build: web/dist/index.html
 	go build -ldflags "$(LDFLAGS)" -o bin/hyperfocus ./cmd/server
 
 # Run the backend (expects ./config.yaml and a reachable Postgres).
-run:
+run: web/dist/index.html
 	go run -ldflags "$(LDFLAGS)" ./cmd/server
 
 tidy:
@@ -41,8 +46,7 @@ web/node_modules: web/package-lock.json
 	cd web && npm ci
 	touch $@
 
-frontend: web/node_modules ## Build the Vue frontend
-	cd web && npm run build
+frontend: web/dist/index.html ## Build the Vue frontend
 
 # Wipe build artifacts (keeps data/ and node_modules).
 clean:

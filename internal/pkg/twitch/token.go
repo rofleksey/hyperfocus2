@@ -66,8 +66,8 @@ func (s *BotTokenStore) Refresh(ctx context.Context) error {
 	}
 
 	var out struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
+		AccessToken  string   `json:"access_token"`
+		RefreshToken string   `json:"refresh_token"`
 		Scope        []string `json:"scope"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {

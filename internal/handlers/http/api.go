@@ -31,6 +31,19 @@ type PreviewServer interface {
 	Dir() string
 }
 
+// Pinger verifies the database connection (pgxpool.Pool satisfies it).
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
+// PublicConfig is the subset of server config exposed via GET /api/config so
+// the SPA never hardcodes operational facts (retention window, feature
+// flags).
+type PublicConfig struct {
+	RetentionHours int
+	NotifyEnabled  bool
+}
+
 // Deps holds the collaborators wired into the HTTP layer.
 type Deps struct {
 	Logger    *slog.Logger
@@ -38,8 +51,10 @@ type Deps struct {
 	Streamers StreamerQuery
 	Previews  PreviewServer
 	StatsRepo StatsRepo
+	DB        Pinger
 	Version   string
 	Subscribe *SubscribeHandler
+	Public    PublicConfig
 }
 
 // API groups handlers over shared dependencies.
@@ -49,13 +64,25 @@ type API struct {
 	streamers StreamerQuery
 	previews  PreviewServer
 	statsRepo StatsRepo
+	db        Pinger
 	version   string
 	subscribe *SubscribeHandler
+	public    PublicConfig
 }
 
 // NewAPI builds an API from deps.
 func NewAPI(d Deps) *API {
-	return &API{log: d.Logger, moments: d.Moments, streamers: d.Streamers, previews: d.Previews, statsRepo: d.StatsRepo, version: d.Version, subscribe: d.Subscribe}
+	return &API{
+		log:       d.Logger,
+		moments:   d.Moments,
+		streamers: d.Streamers,
+		previews:  d.Previews,
+		statsRepo: d.StatsRepo,
+		db:        d.DB,
+		version:   d.Version,
+		subscribe: d.Subscribe,
+		public:    d.Public,
+	}
 }
 
 func (a *API) Subscribe(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,8 @@ import (
 
 // Preview serves a captured full-resolution preview image from disk. Filenames
 // are opaque UUIDs, so we only reject path traversal (no separators in the name).
+// Cache lifetime matches the data retention window: files are pruned after it,
+// so advertising longer caching would leave caches pointing at 404s.
 func (a *API) Preview(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("filename")
 	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
@@ -19,11 +21,12 @@ func (a *API) Preview(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(a.previews.Dir(), name)
 
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+	w.Header().Set("Cache-Control", "public, max-age=10800")
 	http.ServeFile(w, r, path)
 }
 
-// Thumb serves a low-resolution thumbnail from the thumb directory.
+// Thumb serves a low-resolution thumbnail. Thumbnails live in the same flat
+// directory as previews (distinct UUID filenames).
 func (a *API) Thumb(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("filename")
 	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
@@ -33,6 +36,6 @@ func (a *API) Thumb(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(a.previews.Dir(), name)
 
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+	w.Header().Set("Cache-Control", "public, max-age=10800")
 	http.ServeFile(w, r, path)
 }

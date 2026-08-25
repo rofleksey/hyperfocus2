@@ -12,10 +12,10 @@ import (
 )
 
 type BotHelix struct {
-	helix   *helix.Client
-	mu      sync.Mutex
-	log     *slog.Logger
-	token   *BotTokenStore
+	helix     *helix.Client
+	mu        sync.Mutex
+	log       *slog.Logger
+	token     *BotTokenStore
 	botUserID string
 }
 

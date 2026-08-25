@@ -38,7 +38,7 @@ poll:
 
 prune:
   interval: "1h"
-  hours: 72           # data retention window
+  hours: 72           # data retention window (hyperfocusdbd.com runs 3)
 
 storage:
   data_dir: "./data"
