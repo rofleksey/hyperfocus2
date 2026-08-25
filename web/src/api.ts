@@ -78,6 +78,16 @@ export function fetchStats(n = 100): Promise<{ snapshots: SnapshotStat[] }> {
   return getJson(`/api/stats?n=${n}`);
 }
 
+export interface SubscriptionPoint {
+  day: string;
+  new: number;
+  total: number;
+}
+
+export function fetchSubscriptionStats(signal?: AbortSignal): Promise<{ points: SubscriptionPoint[] }> {
+  return getJson(`/api/subscriptions/stats`, signal);
+}
+
 export function fetchSample(streamerId: string, at?: string, signal?: AbortSignal): Promise<Stream> {
   const p = new URLSearchParams();
   p.set("streamer_id", streamerId);

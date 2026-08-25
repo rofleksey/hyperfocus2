@@ -20,9 +20,10 @@ type StreamerQuery interface {
 	ListSessionsForStreamer(ctx context.Context, streamerID string, limit int) ([]entity.SessionDetail, error)
 }
 
-// StatsRepo is the read port for the /api/stats endpoint.
+// StatsRepo is the read port for the /api/stats endpoints.
 type StatsRepo interface {
 	SnapshotStats(ctx context.Context, n int) ([]entity.SnapshotStat, error)
+	VerifiedSubscriberSeries(ctx context.Context) ([]entity.SubscriberDay, error)
 }
 
 // PreviewServer exposes the on-disk directory holding preview images.

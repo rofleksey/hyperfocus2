@@ -99,6 +99,46 @@ UPDATE notification_subscribers SET steam_name = $2 WHERE id = $1;`, id, name); 
 	})
 }
 
+// VerifiedSubscriberSeries returns the day-by-day number of verified
+// subscriptions from the first verified signup through today, inclusive.
+// Each point carries the new subs for that day and the running total. It
+// returns no rows when nobody has verified yet.
+func (r *Repository) VerifiedSubscriberSeries(ctx context.Context) ([]entity.SubscriberDay, error) {
+	rows, err := r.db(ctx).Query(ctx, `
+WITH days AS (
+  SELECT generate_series(
+    date_trunc('day', (SELECT min(verified_at) FROM notification_subscribers WHERE verified_at IS NOT NULL)),
+    date_trunc('day', now()),
+    interval '1 day'
+  )::date AS day
+  WHERE EXISTS (SELECT 1 FROM notification_subscribers WHERE verified_at IS NOT NULL)
+),
+new_subs AS (
+  SELECT date_trunc('day', verified_at)::date AS day, count(*)::bigint AS new
+  FROM notification_subscribers
+  WHERE verified_at IS NOT NULL
+  GROUP BY 1
+)
+SELECT d.day, COALESCE(n.new, 0)::bigint, SUM(COALESCE(n.new, 0)) OVER (ORDER BY d.day)::bigint
+FROM days d
+LEFT JOIN new_subs n ON n.day = d.day
+ORDER BY d.day;`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []entity.SubscriberDay
+	for rows.Next() {
+		var d entity.SubscriberDay
+		if err := rows.Scan(&d.Day, &d.New, &d.Total); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 func (r *Repository) ActiveSubscriberChannels(ctx context.Context) ([]string, error) {
 	rows, err := r.db(ctx).Query(ctx, `
 SELECT twitch_login FROM notification_subscribers WHERE status = 'active'

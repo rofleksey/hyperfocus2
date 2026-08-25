@@ -5,12 +5,12 @@ import Button from "primevue/button";
 <template>
   <section class="landing">
     <div class="hero">
-      <h1>Find out when you're playing against a streamer — in Dead by Daylight</h1>
+      <h1>Find out when you're playing against a streamer in Dead by Daylight</h1>
       <p class="hero-text">
-        Hyperfocus watches every live <strong>Dead by Daylight</strong> stream on Twitch and reads the
-        survivor names from each stream's preview. Subscribe with your Twitch and Steam profiles, and it
-        will message you in your Twitch chat when your Steam name shows up in another streamer's lobby —
-        often while the match is still running.
+        Hyperfocus watches every live Dead by Daylight stream on Twitch and reads the survivor
+        names off each stream's preview. Subscribe with your Twitch username and Steam profile,
+        and it pings you in your own Twitch chat whenever your Steam name shows up in another
+        streamer's lobby, usually while the match is still going.
       </p>
       <div class="hero-actions">
         <RouterLink to="/subscribe"><Button label="Get notified" severity="primary" /></RouterLink>
@@ -25,48 +25,55 @@ import Button from "primevue/button";
         <span class="chat-author">hyperfocus</span>
         <span class="chat-message">You might be playing with @streamer</span>
       </div>
-      <span class="example-hint muted">…often while the match is still going.</span>
+      <span class="example-hint muted">That's it. No spam, just a ping when it happens.</span>
     </div>
 
     <div class="section how-it-works">
       <h2>How it works</h2>
+      <p>
+        Hyperfocus asks Twitch for all live Dead by Daylight streams around the clock. For each
+        one it downloads a 1080p preview image (720p when that's all that exists) and reads the
+        four survivor names from the HUD panel using OCR. If one of those names matches yours,
+        the bot pings you in your own Twitch chat.
+      </p>
+      <p>Setting it up takes a minute:</p>
       <ol class="steps">
-        <li><strong>Subscribe</strong> — enter your Twitch username and your Steam profile URL.</li>
-        <li><strong>Verify</strong> — the bot joins your Twitch chat; type <code>!hyperfocussub</code> in your own channel to confirm.</li>
-        <li><strong>Tracking</strong> — the four survivor names on every live DBD stream's HUD are read continuously using OCR.</li>
-        <li><strong>Detected</strong> — when your Steam name matches a survivor in another streamer's lobby, you get pinged with their channel name.</li>
+        <li>Enter your Twitch username and your Steam profile URL.</li>
+        <li>The bot joins your Twitch chat. Type <code>!hyperfocussub</code> in your own channel to confirm it's really you.</li>
+        <li>Done. When your Steam name is spotted in another streamer's lobby, you get pinged with their channel name.</li>
       </ol>
     </div>
 
     <div class="section limitations">
       <h2>Will it detect you?</h2>
-      <p>Detection relies on reading names from stream previews, so it won't catch everything:</p>
+      <p>It reads names off stream previews, so sometimes it simply can't see you:</p>
       <ul>
-        <li><strong>Anonymous mode</strong> — your nickname is replaced with the character's name, so there is nothing to match.</li>
-        <li><strong>Survivor names hidden</strong> — the streamer disabled survivor nicknames in their game settings.</li>
-        <li><strong>Obscured HUD</strong> — names covered by overlays, unusual HUD placement, or unreadable previews.</li>
-        <li><strong>Very short matches</strong> — roughly under 5 minutes can end before the tracker checks that stream.</li>
-        <li><strong>Tricky nicknames</strong> — very short, very common (like <code>cat</code>, <code>orange</code>, <code>111</code>), or non-Latin names may be missed or matched to the wrong player.</li>
+        <li><strong>Anonymous mode</strong> replaces your nickname with the character's name, so there is nothing to match.</li>
+        <li><strong>Hidden survivor names</strong>: if the streamer turned them off in their game settings, the names never appear on screen.</li>
+        <li><strong>Blocked HUD</strong>: overlays, unusual HUD placement, or a low quality preview can cover the names.</li>
+        <li><strong>Short matches</strong>: a match under roughly 5 minutes can end before the tracker looks at that stream.</li>
+        <li><strong>Tricky nicknames</strong>: very short or very common names (like <code>cat</code>, <code>orange</code>, <code>111</code>) and non-Latin names may be missed or matched to the wrong player.</li>
       </ul>
-      <p class="muted">Matching is fuzzy to tolerate OCR errors, so occasional false positives are possible — a minimum similarity threshold is applied.</p>
+      <p class="muted">Matching is fuzzy on purpose so OCR mistakes don't cause misses, which means a false positive is possible every now and then.</p>
     </div>
 
     <div class="section faq">
       <h2>Good to know</h2>
       <ul>
-        <li><strong>Where do notifications arrive?</strong> As chat messages in <em>your own</em> Twitch channel — the bot does not send direct messages.</li>
-        <li><strong>Which games are supported?</strong> Dead by Daylight only — the name reader is built specifically for the DBD HUD.</li>
-        <li><strong>How do I unsubscribe?</strong> Type <code>!hyperfocusunsub</code> in your Twitch chat. Your subscription data is deleted immediately.</li>
+        <li><strong>Where do notifications arrive?</strong> In your own Twitch chat, as a message from the bot. No direct messages.</li>
+        <li><strong>Which games are supported?</strong> Dead by Daylight only. The name reader is built for the DBD HUD.</li>
+        <li><strong>How do I unsubscribe?</strong> Type <code>!hyperfocusunsub</code> in your Twitch chat. Your subscription data is deleted right away.</li>
         <li><strong>Do I need an account?</strong> No accounts and no cookies. The only data kept is what you submit when subscribing.</li>
       </ul>
     </div>
 
     <div class="section history">
-      <h2>Also a stream history browser</h2>
+      <h2>A searchable archive of every stream</h2>
       <p>
-        Hyperfocus keeps a searchable record of every live Dead by Daylight stream: browse the thumbnail
-        gallery at any moment in time, search survivor names to see who appeared together, and check
-        community stats.
+        Hyperfocus also keeps a record of every live Dead by Daylight stream it has seen. Browse
+        the thumbnail gallery at any moment in time, search a survivor name to see who played
+        together, or check community stats. Snapshots are kept for a rolling window (72 hours by
+        default) and pruned automatically.
       </p>
       <div class="hero-actions">
         <RouterLink to="/live"><Button label="Open the live gallery" severity="secondary" /></RouterLink>
@@ -74,14 +81,21 @@ import Button from "primevue/button";
       </div>
     </div>
 
-    <div class="landing-footer muted">
-      <RouterLink to="/about">About</RouterLink>
-      <span>·</span>
-      <RouterLink to="/privacy">Privacy</RouterLink>
-      <span>·</span>
-      <RouterLink to="/terms">Terms</RouterLink>
-      <span>·</span>
-      <a href="https://github.com/rofleksey/hyperfocus2" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <div class="landing-footer">
+      <p class="legal muted">
+        Hyperfocus is an independent fan project. It is not affiliated with, endorsed by, or
+        sponsored by Twitch Interactive, Valve, or Behaviour Interactive. Dead by Daylight,
+        Steam, Twitch, and all related trademarks belong to their respective owners.
+      </p>
+      <div class="footer-links muted">
+        <RouterLink to="/privacy">Privacy</RouterLink>
+        <span>·</span>
+        <RouterLink to="/terms">Terms</RouterLink>
+        <span>·</span>
+        <a href="https://github.com/rofleksey/hyperfocus2" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span>·</span>
+        <span>&copy; {{ new Date().getFullYear() }} made by <a href="https://github.com/rofleksey" target="_blank" rel="noopener noreferrer">@rofleksey</a></span>
+      </div>
     </div>
   </section>
 </template>
@@ -194,14 +208,25 @@ import Button from "primevue/button";
 
 .landing-footer {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.75rem;
   font-size: 0.8rem;
   margin-top: 3rem;
   padding-top: 1rem;
   border-top: 1px solid var(--p-menubar-border-color, #2d2d35);
 }
-.landing-footer a {
+.legal {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+.footer-links {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.footer-links a {
   color: var(--p-primary-color, #6366f1);
   text-decoration: none;
 }

@@ -23,3 +23,14 @@ func (a *API) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.JSON(w, http.StatusOK, map[string]any{"snapshots": rows})
 }
+
+// SubscriptionStats handles GET /api/subscriptions/stats.
+func (a *API) SubscriptionStats(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.statsRepo.VerifiedSubscriberSeries(r.Context())
+	if err != nil {
+		a.log.Error("subscription stats query failed", "error", err)
+		httputil.Problem(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, map[string]any{"points": rows})
+}

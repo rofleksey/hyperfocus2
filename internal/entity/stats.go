@@ -13,3 +13,10 @@ type SnapshotStat struct {
 	OCROK           int       `json:"ocr_ok"`
 	Total           int       `json:"total"`
 }
+
+// SubscriberDay is one point in the verified-subscription time series.
+type SubscriberDay struct {
+	Day   time.Time `json:"day"`
+	New   int64     `json:"new"`
+	Total int64     `json:"total"`
+}

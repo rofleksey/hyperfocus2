@@ -2,7 +2,7 @@
 import { onMounted, ref } from "vue";
 import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler } from "chart.js";
 import { Line } from "vue-chartjs";
-import { fetchStats, type SnapshotStat } from "../api";
+import { fetchStats, fetchSubscriptionStats, type SnapshotStat } from "../api";
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler);
 
@@ -18,12 +18,19 @@ function fmtLabel(raw: string): string {
   }
 }
 
+function fmtDay(raw: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!m) return raw;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 const onlineData = ref(makeEmpty());
 const totalViewersData = ref(makeEmpty());
 const durationData = ref(makeEmpty());
 const diskData = ref(makeEmpty());
 const previewData = ref(makeEmpty());
 const ocrData = ref(makeEmpty());
+const subsData = ref(makeEmpty());
 
 function makeEmpty() {
   return { labels: [] as string[], datasets: [] as { label: string; data: number[]; borderColor: string; backgroundColor: string; fill: boolean; tension: number; pointRadius: number }[] };
@@ -36,6 +43,14 @@ const chartOptions = {
   scales: {
     x: { ticks: { color: "#94a3b8", font: { size: 10 } }, grid: { color: "#1e293b" } },
     y: { ticks: { color: "#94a3b8", font: { size: 10 } }, grid: { color: "#1e293b" }, beginAtZero: false },
+  },
+};
+
+const subsChartOptions = {
+  ...chartOptions,
+  scales: {
+    ...chartOptions.scales,
+    y: { ...chartOptions.scales.y, beginAtZero: true },
   },
 };
 
@@ -55,6 +70,17 @@ async function load() {
     diskData.value = dataset(labs, "Disk (MB)", stats.value.map(s => +(s.disk_usage_bytes / 1048576).toFixed(1)), "#8b5cf6", "rgba(139,92,246,0.1)");
     previewData.value = dataset(labs, "Previews (%)", stats.value.map(s => s.total > 0 ? Math.round((s.preview_ok / s.total) * 100) : 0), "#22c55e", "rgba(34,197,94,0.1)");
     ocrData.value = dataset(labs, "OCR names (%)", stats.value.map(s => s.total > 0 ? Math.round((s.ocr_ok / s.total) * 100) : 0), "#f59e0b", "rgba(245,158,11,0.1)");
+
+    const subRes = await fetchSubscriptionStats();
+    if (subRes.points.length) {
+      subsData.value = dataset(
+        subRes.points.map(p => fmtDay(p.day)),
+        "Subscriptions",
+        subRes.points.map(p => p.total),
+        "#a3e635",
+        "rgba(163,230,53,0.1)",
+      );
+    }
   } catch (e) {
     error.value = (e as Error).message;
   } finally {
@@ -107,6 +133,11 @@ onMounted(load);
       <div class="chart-box">
         <h3>OCR success rate</h3>
         <div class="chart-wrap"><Line v-if="ocrData.labels.length" :data="ocrData" :options="chartOptions" /></div>
+      </div>
+
+      <div v-if="subsData.labels.length" class="chart-box">
+        <h3>Subscriptions</h3>
+        <div class="chart-wrap"><Line :data="subsData" :options="subsChartOptions" /></div>
       </div>
     </template>
   </section>
