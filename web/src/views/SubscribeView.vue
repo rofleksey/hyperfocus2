@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
+import { ApiError, fetchSubscriptionStatus, postSubscription } from '../api';
 
 const twitchLogin = ref('');
 const steamURL = ref('');
@@ -11,45 +12,45 @@ const success = ref('');
 const status = ref('');
 const steamName = ref('');
 
+let statusController: AbortController | null = null;
+
+const steamUrlValid = computed(() => {
+  const v = steamURL.value.trim();
+  if (!v) return true; // required-ness is handled by the submit guard
+  return /^https?:\/\/steamcommunity\.com\/(id\/[A-Za-z0-9_-]{2,32}|profiles\/\d{17})(\/[^\s]*)?$/i.test(v);
+});
+
+const canSubmit = computed(
+  () => twitchLogin.value.trim().length > 0 && steamURL.value.trim().length > 0 && steamUrlValid.value && !loading.value,
+);
+
 async function checkStatus() {
   const login = twitchLogin.value.trim();
   if (!login) return;
+  statusController?.abort();
+  statusController = new AbortController();
   try {
-    const r = await fetch(`/api/subscribe?twitch=${encodeURIComponent(login)}`);
-    if (r.ok) {
-      const d = await r.json();
-      status.value = d.status;
-      steamName.value = d.steam_name || '';
-    } else {
-      status.value = '';
-      steamName.value = '';
-    }
-  } catch { status.value = ''; steamName.value = ''; }
+    const d = await fetchSubscriptionStatus(login, statusController.signal);
+    status.value = d.status;
+  } catch {
+    status.value = '';
+  }
 }
 
 async function subscribe() {
+  if (!canSubmit.value) return;
   loading.value = true; error.value = ''; success.value = '';
   try {
-    const r = await fetch('/api/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        twitch_login: twitchLogin.value.trim(),
-        steam_url: steamURL.value.trim(),
-      }),
-    });
-    const d = await r.json();
-    if (r.ok) {
-      success.value = d.message || 'Subscription request submitted!';
-      status.value = d.status;
-      steamName.value = d.steam_name || '';
-    } else {
-      error.value = d.error || d.message || 'Failed to subscribe';
-    }
-  } catch {
-    error.value = 'Network error';
+    const d = await postSubscription(twitchLogin.value.trim(), steamURL.value.trim());
+    success.value = d.message || 'Subscription request submitted!';
+    status.value = d.status;
+    steamName.value = d.steam_name || '';
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Network error — please try again.';
   } finally { loading.value = false; }
 }
+
+onUnmounted(() => statusController?.abort());
 </script>
 
 <template>
@@ -60,18 +61,19 @@ async function subscribe() {
       Dead by Daylight lobby — often mid-match.
     </p>
 
-    <div class="form">
+    <form class="form" @submit.prevent="subscribe">
       <div class="field">
         <label for="tw">Twitch username</label>
-        <InputText id="tw" v-model="twitchLogin" placeholder="e.g. tru3ta1ent" size="small" @blur="checkStatus" />
+        <InputText id="tw" v-model="twitchLogin" placeholder="e.g. tru3ta1ent" size="small" autocomplete="off" @blur="checkStatus" />
       </div>
 
       <div class="field">
         <label for="st">Steam profile URL</label>
-        <InputText id="st" v-model="steamURL" placeholder="https://steamcommunity.com/id/yourname" size="small" />
+        <InputText id="st" v-model="steamURL" placeholder="https://steamcommunity.com/id/yourname" size="small" autocomplete="off" inputmode="url" :aria-invalid="!steamUrlValid ? 'true' : undefined" />
+        <small v-if="!steamUrlValid" class="field-error">Enter a full Steam profile URL, e.g. https://steamcommunity.com/id/yourname</small>
       </div>
 
-      <div v-if="status" class="status-banner" :class="'status-' + status">
+      <div v-if="status" class="status-banner" :class="'status-' + status" role="status">
         <template v-if="status === 'pending'">
           Status: <strong>Pending</strong> — type <code>!hyperfocussub</code> in your Twitch chat to verify.
         </template>
@@ -82,12 +84,12 @@ async function subscribe() {
       </div>
 
       <div class="actions">
-        <Button label="Subscribe" severity="primary" :loading="loading" @click="subscribe" :disabled="!twitchLogin.trim() || !steamURL.trim()" />
+        <Button type="submit" label="Subscribe" severity="primary" :loading="loading" :disabled="!canSubmit" />
       </div>
 
-      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-if="success" class="success">{{ success }}</p>
-    </div>
+    </form>
 
     <div class="info">
       <h3>How it works</h3>
@@ -131,6 +133,7 @@ async function subscribe() {
 }
 .field { display: flex; flex-direction: column; gap: 0.25rem; }
 .field label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--p-text-muted-color); }
+.field-error { color: var(--p-red-400, #f87171); font-size: 0.72rem; }
 .error { color: var(--p-red-400, #f87171); font-size: 0.85rem; margin: 0; }
 .success { color: var(--p-green-400, #4ade80); font-size: 0.85rem; margin: 0; }
 

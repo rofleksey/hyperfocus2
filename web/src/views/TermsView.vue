@@ -1,7 +1,7 @@
 <template>
   <section class="legal-page">
     <h2>Terms of Service</h2>
-    <p class="effective">Effective date: {{ new Date().getFullYear() }}</p>
+    <p class="effective">Effective date: August 25, 2026</p>
 
     <h3>1. Acceptance of Terms</h3>
     <p>

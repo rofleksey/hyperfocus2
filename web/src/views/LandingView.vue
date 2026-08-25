@@ -13,8 +13,8 @@ import Button from "primevue/button";
         streamer's lobby, usually while the match is still going.
       </p>
       <div class="hero-actions">
-        <RouterLink to="/subscribe"><Button label="Get notified" severity="primary" /></RouterLink>
-        <RouterLink to="/live"><Button label="Browse live streams" severity="secondary" /></RouterLink>
+        <Button as="router-link" to="/subscribe" label="Get notified" severity="primary" />
+        <Button as="router-link" to="/live" label="Browse live streams" severity="secondary" />
       </div>
       <p class="hero-fineprint muted">No accounts. No cookies. Unsubscribe anytime.</p>
     </div>
@@ -72,12 +72,12 @@ import Button from "primevue/button";
       <p>
         Hyperfocus also keeps a record of every live Dead by Daylight stream it has seen. Browse
         the thumbnail gallery at any moment in time, search a survivor name to see who played
-        together, or check community stats. Snapshots are kept for a rolling window (72 hours by
-        default) and pruned automatically.
+        together, or check community stats. Snapshots are kept for a rolling window (3 hours
+        on hyperfocusdbd.com, configurable when self-hosting) and pruned automatically.
       </p>
       <div class="hero-actions">
-        <RouterLink to="/live"><Button label="Open the live gallery" severity="secondary" /></RouterLink>
-        <RouterLink to="/stats"><Button label="Stats" severity="secondary" /></RouterLink>
+        <Button as="router-link" to="/live" label="Open the live gallery" severity="secondary" />
+        <Button as="router-link" to="/stats" label="Stats" severity="secondary" />
       </div>
     </div>
 

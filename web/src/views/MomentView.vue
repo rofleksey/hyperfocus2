@@ -6,12 +6,11 @@ import Select from "primevue/select";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
 import { useRoute, useRouter } from "vue-router";
-import { fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type Stream } from "../api";
+import { fetchConfig, fetchMoment, fetchSnapshots, type MomentResponse, type Snapshot, type Stream } from "../api";
 
 const SORT_OPTIONS = ["viewers", "name", "started"] as const;
 const DIR_OPTIONS = ["asc", "desc"] as const;
 const PAGE_SIZE = 100;
-const RETENTION_HOURS = 6;
 const DEBOUNCE_MS = 300;
 const POLL_INTERVAL_MS = 30000;
 const SNAPSHOTS_LIMIT = 200;
@@ -45,9 +44,13 @@ const dirOptions = [
   { label: "Ascending", value: "asc" },
 ];
 
+// Retention window comes from the server (/api/config) so the UI can never
+// disagree with the backend. Falls back to a conservative value.
+const retentionHours = ref(3);
+
 const outsideRetention = computed(() => {
   if (!at.value) return false;
-  const cutoff = new Date(Date.now() - RETENTION_HOURS * 3600 * 1000);
+  const cutoff = new Date(Date.now() - retentionHours.value * 3600 * 1000);
   return at.value < cutoff;
 });
 
@@ -65,6 +68,9 @@ let momentController: AbortController | null = null;
 const snapshots = ref<Snapshot[]>([]);
 const latestSnapshotAt = ref<string>("");
 const lastSeenLatestAt = ref<string>("");
+// True when the periodic latest-snapshot poll keeps failing; surfaced as a
+// subtle "updates paused" hint instead of failing silently forever.
+const pollStale = ref(false);
 const hasNewerSnapshot = computed(() => {
   if (!lastSeenLatestAt.value || !latestSnapshotAt.value) return false;
   return latestSnapshotAt.value > lastSeenLatestAt.value;
@@ -115,7 +121,6 @@ async function loadFirstPage() {
     const snaps = await fetchSnapshots(SNAPSHOTS_LIMIT, signal);
     snapshots.value = snaps.data;
     await checkLatest(signal);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (e) {
     if ((e as Error).name !== "AbortError") {
       error.value = (e as Error).message;
@@ -148,7 +153,14 @@ async function checkLatest(signal?: AbortSignal) {
       if (!lastSeenLatestAt.value) lastSeenLatestAt.value = latest;
       latestSnapshotAt.value = latest;
     }
-  } catch (_e) {}
+    pollStale.value = false;
+  } catch (e) {
+    if ((e as Error).name !== "AbortError") pollStale.value = true;
+  }
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function debounceLoad() {
@@ -230,6 +242,9 @@ function isDocumentHidden() {
 
 onMounted(() => {
   if (!route.query.at) syncURL();
+  fetchConfig()
+    .then((c) => { retentionHours.value = c.retention_hours || 3; })
+    .catch(() => {});
   loadFirstPage();
   function safePoll() { if (!isDocumentHidden()) checkLatest(); }
   snapshotPollTimer = setInterval(safePoll, POLL_INTERVAL_MS);
@@ -250,6 +265,7 @@ onUnmounted(() => {
         Online at {{ moment?.snapshot ? fmt(moment.snapshot.taken_at) : '—' }}
         <template v-if="moment?.snapshot">· {{ moment.snapshot.stream_count }} online</template>
       </span>
+      <span v-if="pollStale" class="stale-pill" role="status">updates paused — retrying</span>
       <span class="moment-spacer"></span>
       <div class="moment-controls">
         <div class="survivor-search">
@@ -268,8 +284,8 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <p v-if="outsideRetention" class="retention-warn">
-      This time is outside the {{ RETENTION_HOURS }}-hour retention window. Data may be incomplete or missing.
+    <p v-if="outsideRetention" class="retention-warn" role="alert">
+      This time is outside the {{ retentionHours }}-hour retention window. Data may be incomplete or missing.
     </p>
 
     <p v-if="error" class="muted">Error: {{ error }} <button class="retry-btn" @click="loadFirstPage">Try again</button></p>
@@ -294,7 +310,7 @@ onUnmounted(() => {
 
     <div v-if="allStreams.length && !loading" ref="sentinel" class="scroll-sentinel">
       <span v-if="loadingMore" class="spinner small-spinner"></span>
-      <button v-else-if="!hasMore && allStreams.length > PAGE_SIZE" class="retry-btn" @click="loadFirstPage" style="font-size:0.75rem">All streams loaded — scroll to top</button>
+      <button v-else-if="!hasMore && allStreams.length > PAGE_SIZE" class="retry-btn" @click="scrollToTop" style="font-size:0.75rem">All streams loaded — back to top</button>
       <span v-else-if="!hasMore" class="muted" style="font-size:0.75rem">All streams loaded</span>
     </div>
 
@@ -351,6 +367,11 @@ onUnmounted(() => {
 .retention-warn {
   background: rgba(220, 38, 38, 0.12); border: 1px solid rgba(220, 38, 38, 0.3);
   border-radius: 4px; padding: 0.4rem 0.75rem; font-size: 0.8rem; color: #fca5a5; margin: 0 0 0.5rem;
+}
+
+.stale-pill {
+  font-size: 0.7rem; color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px; padding: 0.1rem 0.5rem; white-space: nowrap;
 }
 
 .survivor-search { position: relative; display: flex; align-items: center; gap: 0.4rem; flex: 1; max-width: 380px; min-width: 180px; }

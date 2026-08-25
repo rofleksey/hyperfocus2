@@ -6,7 +6,7 @@ import { RouterLink } from "vue-router";
   <section class="not-found">
     <h1>No such page</h1>
     <p class="sub">Skill issue.</p>
-    <img src="/skill-issue.gif" alt="skill issue" class="gif" />
+    <img src="/skill-issue.webp" alt="skill issue" class="gif" loading="lazy" decoding="async" width="240" height="254" />
     <p><RouterLink to="/" class="back-link">&larr; Back to home</RouterLink></p>
   </section>
 </template>

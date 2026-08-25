@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { Chart, LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler } from "chart.js";
 import { Line } from "vue-chartjs";
 import { fetchStats, fetchSubscriptionStats, type SnapshotStat } from "../api";
@@ -9,6 +9,8 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 const stats = ref<SnapshotStat[]>([]);
 const loading = ref(false);
 const error = ref("");
+
+let controller: AbortController | null = null;
 
 function fmtLabel(raw: string): string {
   try {
@@ -55,10 +57,12 @@ const subsChartOptions = {
 };
 
 async function load() {
+  controller?.abort();
+  controller = new AbortController();
   loading.value = true;
   error.value = "";
   try {
-    const res = await fetchStats(100);
+    const res = await fetchStats(100, controller.signal);
     stats.value = res.snapshots;
     if (!stats.value.length) return;
 
@@ -71,7 +75,7 @@ async function load() {
     previewData.value = dataset(labs, "Previews (%)", stats.value.map(s => s.total > 0 ? Math.round((s.preview_ok / s.total) * 100) : 0), "#22c55e", "rgba(34,197,94,0.1)");
     ocrData.value = dataset(labs, "OCR names (%)", stats.value.map(s => s.total > 0 ? Math.round((s.ocr_ok / s.total) * 100) : 0), "#f59e0b", "rgba(245,158,11,0.1)");
 
-    const subRes = await fetchSubscriptionStats();
+    const subRes = await fetchSubscriptionStats(controller.signal);
     if (subRes.points.length) {
       subsData.value = dataset(
         subRes.points.map(p => fmtDay(p.day)),
@@ -82,9 +86,9 @@ async function load() {
       );
     }
   } catch (e) {
-    error.value = (e as Error).message;
+    if ((e as Error).name !== "AbortError") error.value = (e as Error).message;
   } finally {
-    loading.value = false;
+    if (controller?.signal.aborted === false) loading.value = false;
   }
 }
 
@@ -96,48 +100,53 @@ function dataset(labels: string[], label: string, data: number[], border: string
 }
 
 onMounted(load);
+onUnmounted(() => controller?.abort());
 </script>
 
 <template>
   <section class="stats-page">
     <h2>Stats</h2>
-    <p v-if="error" class="muted">Error: {{ error }}</p>
+    <p v-if="error" class="muted">Error: {{ error }} <button class="retry-btn" @click="load">Try again</button></p>
     <div v-if="loading" class="loading-spinner"><span class="spinner"></span></div>
+
+    <div v-else-if="!error && !stats.length" class="empty-state">
+      <p class="muted">No stats yet — snapshots will appear here as soon as the poller records a cycle.</p>
+    </div>
 
     <template v-if="!loading && stats.length">
       <div class="chart-box">
         <h3>Streams online</h3>
-        <div class="chart-wrap"><Line v-if="onlineData.labels.length" :data="onlineData" :options="chartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line v-if="onlineData.labels.length" :data="onlineData" :options="chartOptions" /></div>
       </div>
 
       <div class="chart-box">
         <h3>Total viewers</h3>
-        <div class="chart-wrap"><Line v-if="totalViewersData.labels.length" :data="totalViewersData" :options="chartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line v-if="totalViewersData.labels.length" :data="totalViewersData" :options="chartOptions" /></div>
       </div>
 
       <div class="chart-box">
         <h3>Cycle time (seconds)</h3>
-        <div class="chart-wrap"><Line v-if="durationData.labels.length" :data="durationData" :options="chartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line v-if="durationData.labels.length" :data="durationData" :options="chartOptions" /></div>
       </div>
 
       <div class="chart-box">
         <h3>Disk usage (MB)</h3>
-        <div class="chart-wrap"><Line v-if="diskData.labels.length" :data="diskData" :options="chartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line v-if="diskData.labels.length" :data="diskData" :options="chartOptions" /></div>
       </div>
 
       <div class="chart-box">
         <h3>Preview capture rate</h3>
-        <div class="chart-wrap"><Line v-if="previewData.labels.length" :data="previewData" :options="chartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line v-if="previewData.labels.length" :data="previewData" :options="chartOptions" /></div>
       </div>
 
       <div class="chart-box">
         <h3>OCR success rate</h3>
-        <div class="chart-wrap"><Line v-if="ocrData.labels.length" :data="ocrData" :options="chartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line v-if="ocrData.labels.length" :data="ocrData" :options="chartOptions" /></div>
       </div>
 
       <div v-if="subsData.labels.length" class="chart-box">
         <h3>Subscriptions</h3>
-        <div class="chart-wrap"><Line :data="subsData" :options="subsChartOptions" /></div>
+        <div class="chart-wrap" aria-hidden="true"><Line :data="subsData" :options="subsChartOptions" /></div>
       </div>
     </template>
   </section>
@@ -150,6 +159,11 @@ onMounted(load);
 
 .chart-box { margin-bottom: 0.5rem; }
 .chart-wrap { height: 220px; }
+.chart-wrap :deep(canvas) { border-radius: 4px; }
+
+.empty-state { padding: 2rem 0; }
+.retry-btn { background: none; border: 1px solid var(--p-primary-color, #6366f1); border-radius: 3px; color: var(--p-primary-color, #6366f1); cursor: pointer; font-size: 0.8rem; padding: 0.15rem 0.4rem; vertical-align: middle; }
+.retry-btn:hover { background: var(--p-primary-color, #6366f1); color: #fff; }
 
 .loading-spinner { display: flex; justify-content: center; padding: 2rem 0; }
 .spinner {

@@ -1,18 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, RouterLink } from "vue-router";
-import { fetchSample, type Stream } from "../api";
+import { useHead } from "@unhead/vue";
+import { ApiError, fetchSample, type Stream } from "../api";
 
 const props = defineProps<{ streamer_id: string }>();
 const route = useRoute();
 
 const stream = ref<Stream | null>(null);
 const loading = ref(false);
+const notFound = ref(false);
 const error = ref("");
+
+let controller: AbortController | null = null;
 
 const backLink = computed(() => {
   const at = route.query.at;
   return typeof at === "string" && at ? `/live?at=${encodeURIComponent(at)}` : "/live";
+});
+
+useHead({
+  title: computed(() => (stream.value ? `${stream.value.display_name} — DBD stream` : "Stream")),
 });
 
 function fmt(date: string): string {
@@ -24,15 +32,25 @@ function initials(name: string): string {
 }
 
 async function load() {
+  controller?.abort();
+  const c = new AbortController();
+  controller = c;
   loading.value = true;
   error.value = "";
+  notFound.value = false;
   try {
     const at = (route.query.at as string) || "";
-    stream.value = await fetchSample(props.streamer_id, at);
+    stream.value = await fetchSample(props.streamer_id, at, c.signal);
+    if (!stream.value) notFound.value = true;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (c.signal.aborted) return;
+    if (e instanceof ApiError && e.status === 404) {
+      notFound.value = true;
+    } else {
+      error.value = (e as Error).message;
+    }
   } finally {
-    loading.value = false;
+    if (!c.signal.aborted) loading.value = false;
   }
 }
 
@@ -41,12 +59,24 @@ watch(
   () => load(),
 );
 onMounted(load);
+onUnmounted(() => controller?.abort());
 </script>
 
 <template>
   <section>
     <p v-if="loading" class="muted">Loading…</p>
-    <p v-else-if="error" class="muted">Error: {{ error }}</p>
+
+    <div v-else-if="notFound" class="empty-state">
+      <h2>Stream not found</h2>
+      <p class="muted">This streamer wasn't live at that moment, or the snapshot is outside the retention window.</p>
+      <RouterLink :to="backLink">&larr; Back to the gallery</RouterLink>
+    </div>
+
+    <div v-else-if="error" class="empty-state">
+      <h2>Couldn't load this stream</h2>
+      <p class="muted">{{ error }}</p>
+      <button class="retry-btn" @click="load">Try again</button>
+    </div>
 
     <template v-if="!loading && stream">
       <p class="muted" style="margin-bottom:0.5rem">
@@ -57,13 +87,13 @@ onMounted(load);
         v-if="stream.preview_url"
         class="detail-thumb"
         :src="stream.preview_url"
-        :alt="stream.display_name"
+        :alt="`${stream.display_name} Dead by Daylight stream preview`"
       />
 
       <div class="detail-info">
         <div class="detail-header">
-          <img v-if="stream.profile_image_url" class="detail-avatar" :src="stream.profile_image_url" :alt="stream.display_name" />
-          <span v-else class="detail-avatar avatar-fallback">{{ initials(stream.display_name) }}</span>
+          <img v-if="stream.profile_image_url" class="detail-avatar" :src="stream.profile_image_url" :alt="''" />
+          <span v-else class="detail-avatar avatar-fallback" aria-hidden="true">{{ initials(stream.display_name) }}</span>
           <div>
             <h2 class="detail-name">{{ stream.display_name }}</h2>
             <span class="muted">@{{ stream.login }}</span>
@@ -80,7 +110,9 @@ onMounted(load);
 
         <div class="ocr-block">
           <span class="ocr-label muted">Survivors (OCR &middot; noisy)</span>
-          <pre v-if="stream.survivor_names.length" class="ocr-code"><code>{{ JSON.stringify(stream.survivor_names, null, 2) }}</code></pre>
+          <ul v-if="stream.survivor_names.length" class="survivor-list">
+            <li v-for="name in stream.survivor_names" :key="name" class="survivor-chip">{{ name }}</li>
+          </ul>
           <span v-else class="muted">—</span>
         </div>
 
@@ -118,11 +150,18 @@ onMounted(load);
 
 .ocr-block { display: flex; flex-direction: column; gap: 0.3rem; }
 .ocr-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.ocr-code {
-  margin: 0; padding: 0.6rem 0.75rem; background: #0b0e13; border: 1px solid #232a36;
-  border-radius: 4px; overflow-x: auto; font-family: ui-monospace, monospace; font-size: 0.78rem;
-  line-height: 1.4; color: #cbd5e1;
+.survivor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.survivor-chip {
+  padding: 0.2rem 0.6rem; background: #0b0e13; border: 1px solid #232a36; border-radius: 999px;
+  font-family: ui-monospace, monospace; font-size: 0.8rem; color: #cbd5e1;
 }
+
+.empty-state { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; padding: 2rem 0; }
+.empty-state h2 { margin: 0; font-size: 1.1rem; }
+.empty-state p { margin: 0; }
+
+.retry-btn { background: none; border: 1px solid var(--p-primary-color, #6366f1); border-radius: 3px; color: var(--p-primary-color, #6366f1); cursor: pointer; font-size: 0.8rem; padding: 0.15rem 0.4rem; }
+.retry-btn:hover { background: var(--p-primary-color, #6366f1); color: #fff; }
 
 .detail-links { display: flex; gap: 0.5rem; }
 .link-btn {
