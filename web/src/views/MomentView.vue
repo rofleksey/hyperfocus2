@@ -288,7 +288,7 @@ onUnmounted(() => {
       <span v-else-if="!hasMore" class="muted" style="font-size:0.75rem">All streams loaded</span>
     </div>
 
-    <Dialog v-model:visible="filtersVisible" header="Filters" :modal="true" :style="{ width: '420px', maxWidth: '95vw' }">
+    <Dialog v-model:visible="filtersVisible" header="Filters" :modal="true" dismissableMask :style="{ width: '420px', maxWidth: '95vw' }">
       <div class="filters-grid">
         <div class="field">
           <label for="at">When</label>

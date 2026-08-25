@@ -19,6 +19,13 @@ main:focus {
   outline: none;
 }
 
+/* Dialog close buttons: no focus outline ring. */
+.p-dialog .p-dialog-header-close:focus,
+.p-dialog .p-dialog-header-close:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .skip-link {
   position: absolute;
   top: -100%;
