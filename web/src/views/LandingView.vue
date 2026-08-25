@@ -75,10 +75,6 @@ import Button from "primevue/button";
         together, or check community stats. Snapshots are kept for a rolling window (3 hours
         on hyperfocusdbd.com, configurable when self-hosting) and pruned automatically.
       </p>
-      <div class="hero-actions">
-        <Button as="router-link" to="/live" label="Open the live gallery" severity="secondary" />
-        <Button as="router-link" to="/stats" label="Stats" severity="secondary" />
-      </div>
     </div>
 
     <div class="landing-footer">

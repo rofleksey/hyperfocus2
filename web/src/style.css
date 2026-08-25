@@ -33,6 +33,12 @@ a {
   color: inherit;
 }
 
+/* PrimeVue buttons rendered as links (as="router-link") must not inherit the
+   browser's anchor underline. */
+a.p-button {
+  text-decoration: none;
+}
+
 .app-shell {
   min-height: 100vh;
 }
