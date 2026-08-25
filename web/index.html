@@ -3,14 +3,84 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hyperfocus — Dead by Daylight streamer detection &amp; alerts</title>
     <meta name="description" content="Hyperfocus watches live Dead by Daylight streams on Twitch and notifies you in your Twitch chat — often mid-match — when your Steam name appears in another streamer's lobby. Plus a browsable DBD live stream history." />
+    <link rel="canonical" href="https://hyperfocusdbd.com/" />
     <meta name="theme-color" content="#121216" />
-    <meta property="og:title" content="hyperfocus — Dead by Daylight streamer detection & alerts" />
-    <meta property="og:description" content="Find out when you're playing against a streamer in Dead by Daylight. Hyperfocus reads survivor names from live Twitch streams and pings you in your own chat when your Steam name is spotted in someone else's lobby." />
+
+    <meta property="og:site_name" content="hyperfocus" />
     <meta property="og:type" content="website" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>" />
-    <title>hyperfocus — Dead by Daylight streamer detection & alerts</title>
+    <meta property="og:title" content="hyperfocus — Dead by Daylight streamer detection &amp; alerts" />
+    <meta property="og:description" content="Find out when you're playing against a streamer in Dead by Daylight. Hyperfocus reads survivor names from live Twitch streams and pings you in your own chat when your Steam name is spotted in someone else's lobby." />
+    <meta property="og:url" content="https://hyperfocusdbd.com/" />
+    <meta property="og:image" content="https://hyperfocusdbd.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="hyperfocus — skill-check ring logo on dark background" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="hyperfocus — Dead by Daylight streamer detection &amp; alerts" />
+    <meta name="twitter:description" content="Find out when you're playing against a streamer in Dead by Daylight. Get pinged in your own Twitch chat when your Steam name shows up in another streamer's lobby." />
+    <meta name="twitter:image" content="https://hyperfocusdbd.com/og-image.png" />
+
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; font-src 'self' data:" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "name": "hyperfocus",
+          "url": "https://hyperfocusdbd.com/"
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How does hyperfocus detect that I'm playing against a streamer?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Every live Dead by Daylight stream's preview is OCR-read to extract the four survivor names from the HUD. When your Steam name fuzzy-matches a survivor in another streamer's lobby, the bot pings you in your own Twitch chat."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Where do notifications arrive?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "As chat messages in your own Twitch channel. The bot does not send whispers or direct messages."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Will it detect me every match?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Detection relies on reading names from stream previews: anonymous mode, hidden survivor names, obscured HUDs, very short matches, and tricky nicknames can all cause misses."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is it free? Do I need an account?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes, it's free, and there are no accounts or cookies — you subscribe with your Twitch login and Steam profile and verify in your own chat."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="app"></div>

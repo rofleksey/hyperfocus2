@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /previews/
+
+Sitemap: https://hyperfocusdbd.com/sitemap.xml

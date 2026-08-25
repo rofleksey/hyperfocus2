@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Original artwork: octagonal perk-style plate with a skill-check ring,
+       great-zone arc and pointer needle. Not affiliated with Behaviour
+       Interactive; inspired by the game's visual language only. -->
+  <polygon points="68,6.6 93.4,32 93.4,68 68,93.4 32,93.4 6.6,68 6.6,32 32,6.6"
+           fill="#16161c" stroke="#3d3d48" stroke-width="3" stroke-linejoin="round"/>
+  <!-- base ring -->
+  <circle cx="50" cy="50" r="26" fill="none" stroke="#55555f" stroke-width="9"/>
+  <!-- great zone arc, upper right, -55° to -15° -->
+  <path d="M 64.9 28.7 A 26 26 0 0 1 75.1 43.3"
+        fill="none" stroke="#f2f2f4" stroke-width="9" stroke-linecap="round"/>
+  <!-- pointer needle aimed into the great zone (-35°): white shaft, red tip -->
+  <line x1="50" y1="50" x2="68" y2="37.4" stroke="#f2f2f4" stroke-width="6" stroke-linecap="round"/>
+  <line x1="68" y1="37.4" x2="75" y2="32.5" stroke="#e0323e" stroke-width="6" stroke-linecap="round"/>
+  <!-- center hub -->
+  <circle cx="50" cy="50" r="4.5" fill="#f2f2f4"/>
+</svg>
